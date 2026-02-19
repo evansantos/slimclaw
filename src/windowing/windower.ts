@@ -4,7 +4,7 @@
  */
 
 import type { Message } from './token-counter.js';
-import { estimateTokens, calculateTokenSavings } from './token-counter.js';
+import { estimateTokens } from './token-counter.js';
 import { generateSummary } from './summarizer.js';
 
 export interface WindowingConfig {
@@ -28,10 +28,14 @@ export interface WindowedConversation {
   /** Messages kept in the active window */
   recentMessages: Message[];
   /** Metadata for metrics and debugging */
-  stats: {
-    originalCount: number;
-    windowedCount: number;
-    tokensSaved: number;
+  meta: {
+    originalMessageCount: number;
+    windowedMessageCount: number;
+    trimmedMessageCount: number;
+    originalTokenEstimate: number;
+    windowedTokenEstimate: number;
+    summaryTokenEstimate: number;
+    summarizationMethod: "none" | "heuristic" | "llm";
   };
 }
 
@@ -61,7 +65,15 @@ export function windowConversation(
       systemPrompt: '',
       contextSummary: null,
       recentMessages: [],
-      stats: { originalCount: 0, windowedCount: 0, tokensSaved: 0 },
+      meta: {
+        originalMessageCount: 0,
+        windowedMessageCount: 0,
+        trimmedMessageCount: 0,
+        originalTokenEstimate: 0,
+        windowedTokenEstimate: 0,
+        summaryTokenEstimate: 0,
+        summarizationMethod: "none",
+      },
     };
   }
 
@@ -71,14 +83,19 @@ export function windowConversation(
 
   // Check if windowing is needed
   if (!needsWindowing(nonSystemMessages, finalConfig)) {
+    const originalTokens = estimateTokens(messages);
     return {
       systemPrompt,
       contextSummary: null,
       recentMessages: nonSystemMessages,
-      stats: { 
-        originalCount: messages.length, 
-        windowedCount: messages.length, 
-        tokensSaved: 0 
+      meta: {
+        originalMessageCount: messages.length,
+        windowedMessageCount: messages.length,
+        trimmedMessageCount: 0,
+        originalTokenEstimate: originalTokens,
+        windowedTokenEstimate: originalTokens,
+        summaryTokenEstimate: 0,
+        summarizationMethod: "none",
       },
     };
   }
@@ -94,20 +111,30 @@ export function windowConversation(
   const summaryResult = generateSummary(messagesToSummarize);
   const contextSummary = summaryResult.summary || null;
 
-  // Calculate token savings
-  const savings = calculateTokenSavings(messages, [
+  // Calculate token estimates
+  const originalTokens = estimateTokens(messages);
+  const windowedMessages = [
     ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
     ...recentMessages,
-  ]);
+  ];
+  const windowedTokens = estimateTokens(windowedMessages);
+  const summaryTokens = contextSummary ? estimateTokens([{ role: 'system', content: contextSummary }]) : 0;
+  
+  // Determine summarization method
+  const summarizationMethod = contextSummary ? "heuristic" : "none";
 
   return {
     systemPrompt,
     contextSummary,
     recentMessages,
-    stats: {
-      originalCount: messages.length,
-      windowedCount: recentMessages.length + (systemPrompt ? 1 : 0),
-      tokensSaved: savings.tokensSaved,
+    meta: {
+      originalMessageCount: messages.length,
+      windowedMessageCount: recentMessages.length + (systemPrompt ? 1 : 0),
+      trimmedMessageCount: messages.length - (recentMessages.length + (systemPrompt ? 1 : 0)),
+      originalTokenEstimate: originalTokens,
+      windowedTokenEstimate: windowedTokens,
+      summaryTokenEstimate: summaryTokens,
+      summarizationMethod,
     },
   };
 }

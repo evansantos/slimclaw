@@ -1,0 +1,30 @@
+{
+  "id": "slimclaw",
+  "name": "SlimClaw",
+  "version": "0.1.0",
+  "description": "Inference optimization middleware — windowing, routing, caching (60-80% token savings)",
+  "entry": "./dist/index.js",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "mode": {
+        "type": "string",
+        "enum": ["shadow", "active"],
+        "default": "shadow"
+      },
+      "windowSize": {
+        "type": "number",
+        "default": 50000
+      },
+      "cacheEnabled": {
+        "type": "boolean",
+        "default": true
+      }
+    },
+    "additionalProperties": false
+  }
+}

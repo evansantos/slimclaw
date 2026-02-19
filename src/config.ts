@@ -25,6 +25,8 @@ export const SlimClawConfigSchema = z.object({
     enabled: z.boolean().default(false), // P1 - disabled for MVP
     /** Allow downgrading to cheaper models */
     allowDowngrade: z.boolean().default(true),
+    /** Models that should never be routed away from */
+    pinnedModels: z.array(z.string()).default([]),
     /** Minimum classification confidence to apply routing */
     minConfidence: z.number().min(0).max(1).default(0.4),
     /** Model tiers configuration */
@@ -34,6 +36,8 @@ export const SlimClawConfigSchema = z.object({
       complex: "anthropic/claude-opus-4-20250514",
       reasoning: "anthropic/claude-opus-4-20250514",
     }),
+    /** Thinking budget for reasoning tier models */
+    reasoningBudget: z.number().int().default(10000),
   }).default({}),
 
   caching: z.object({
@@ -50,6 +54,23 @@ export const SlimClawConfigSchema = z.object({
     logPath: z.string().default("metrics"),
     /** Flush metrics to disk every N milliseconds */
     flushIntervalMs: z.number().int().default(10000),
+  }).default({}),
+
+  logging: z.object({
+    /** Minimum log level (debug, info, warn, error) */
+    level: z.enum(["debug", "info", "warn", "error"]).default("info"),
+    /** Output format (json for production, human for development) */
+    format: z.enum(["json", "human"]).default("human"),
+    /** Enable file output */
+    fileOutput: z.boolean().default(true),
+    /** Log file path relative to ~/.openclaw/data/slimclaw/ */
+    logPath: z.string().default("logs"),
+    /** Enable console output */
+    consoleOutput: z.boolean().default(true),
+    /** Include stack traces for errors */
+    includeStackTrace: z.boolean().default(true),
+    /** Enable colors in console output */
+    colors: z.boolean().default(true),
   }).default({}),
 });
 
@@ -71,6 +92,7 @@ export const DEFAULT_CONFIG: SlimClawConfig = {
   routing: {
     enabled: false, // P1 - start with shadow mode only
     allowDowngrade: true,
+    pinnedModels: [],
     minConfidence: 0.4,
     tiers: {
       simple: "anthropic/claude-3-haiku-20240307",
@@ -78,6 +100,7 @@ export const DEFAULT_CONFIG: SlimClawConfig = {
       complex: "anthropic/claude-opus-4-20250514",
       reasoning: "anthropic/claude-opus-4-20250514",
     },
+    reasoningBudget: 10000,
   },
   caching: {
     enabled: true,
@@ -88,6 +111,15 @@ export const DEFAULT_CONFIG: SlimClawConfig = {
     enabled: true,
     logPath: "metrics",
     flushIntervalMs: 10000,
+  },
+  logging: {
+    level: "info",
+    format: "human",
+    fileOutput: true,
+    logPath: "logs",
+    consoleOutput: true,
+    includeStackTrace: true,
+    colors: true,
   },
 };
 
@@ -181,7 +213,7 @@ export function mergeWithDefaults(userConfig: Partial<SlimClawConfig>): SlimClaw
  */
 export function getAgentConfig(
   baseConfig: SlimClawConfig,
-  agentId?: string
+  _agentId?: string  // Reserved for future agent-specific overrides
 ): SlimClawConfig {
   // For now, just return base config
   // TODO: Implement agent-specific overrides from design doc

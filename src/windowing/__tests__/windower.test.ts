@@ -40,9 +40,13 @@ describe('windowConversation', () => {
 
     expect(result.contextSummary).toBeNull();
     expect(result.recentMessages).toHaveLength(5); // 5 non-system messages
-    expect(result.stats.originalCount).toBe(6);
-    expect(result.stats.windowedCount).toBe(6);
-    expect(result.stats.tokensSaved).toBe(0);
+    expect(result.meta.originalMessageCount).toBe(6);
+    expect(result.meta.windowedMessageCount).toBe(6);
+    expect(result.meta.trimmedMessageCount).toBe(0);
+    expect(result.meta.originalTokenEstimate).toBeGreaterThan(0);
+    expect(result.meta.windowedTokenEstimate).toBe(result.meta.originalTokenEstimate);
+    expect(result.meta.summaryTokenEstimate).toBe(0);
+    expect(result.meta.summarizationMethod).toBe("none");
   });
 
   it('should apply windowing when above threshold', () => {
@@ -50,9 +54,12 @@ describe('windowConversation', () => {
 
     expect(result.contextSummary).toBeTruthy();
     expect(result.recentMessages.length).toBeLessThan(sampleMessages.length - 1); // Less than original (minus system)
-    expect(result.stats.originalCount).toBe(sampleMessages.length);
-    expect(result.stats.windowedCount).toBeLessThan(sampleMessages.length);
-    expect(result.stats.tokensSaved).toBeGreaterThan(0);
+    expect(result.meta.originalMessageCount).toBe(sampleMessages.length);
+    expect(result.meta.windowedMessageCount).toBeLessThan(sampleMessages.length);
+    expect(result.meta.trimmedMessageCount).toBeGreaterThan(0);
+    expect(result.meta.originalTokenEstimate).toBeGreaterThan(result.meta.windowedTokenEstimate);
+    expect(result.meta.summaryTokenEstimate).toBeGreaterThan(0);
+    expect(result.meta.summarizationMethod).toBe("heuristic");
   });
 
   it('should extract system prompt correctly', () => {
@@ -94,9 +101,13 @@ describe('windowConversation', () => {
     expect(result.systemPrompt).toBe('');
     expect(result.contextSummary).toBeNull();
     expect(result.recentMessages).toHaveLength(0);
-    expect(result.stats.originalCount).toBe(0);
-    expect(result.stats.windowedCount).toBe(0);
-    expect(result.stats.tokensSaved).toBe(0);
+    expect(result.meta.originalMessageCount).toBe(0);
+    expect(result.meta.windowedMessageCount).toBe(0);
+    expect(result.meta.trimmedMessageCount).toBe(0);
+    expect(result.meta.originalTokenEstimate).toBe(0);
+    expect(result.meta.windowedTokenEstimate).toBe(0);
+    expect(result.meta.summaryTokenEstimate).toBe(0);
+    expect(result.meta.summarizationMethod).toBe("none");
   });
 
   it('should handle ContentBlock[] format in messages', () => {
@@ -120,7 +131,15 @@ describe('buildWindowedMessages', () => {
         { role: 'user', content: 'What about arrow functions?' },
         { role: 'assistant', content: 'Arrow functions use this syntax: const greet = (name) => "Hello " + name;' },
       ] as Message[],
-      stats: { originalCount: 10, windowedCount: 3, tokensSaved: 100 },
+      meta: {
+        originalMessageCount: 10,
+        windowedMessageCount: 3,
+        trimmedMessageCount: 7,
+        originalTokenEstimate: 1000,
+        windowedTokenEstimate: 300,
+        summaryTokenEstimate: 100,
+        summarizationMethod: "heuristic",
+      },
     };
 
     const result = buildWindowedMessages(windowed);
@@ -142,7 +161,15 @@ describe('buildWindowedMessages', () => {
         { role: 'user', content: 'Hello!' },
         { role: 'assistant', content: 'Hi there!' },
       ] as Message[],
-      stats: { originalCount: 3, windowedCount: 3, tokensSaved: 0 },
+      meta: {
+        originalMessageCount: 3,
+        windowedMessageCount: 3,
+        trimmedMessageCount: 0,
+        originalTokenEstimate: 200,
+        windowedTokenEstimate: 200,
+        summaryTokenEstimate: 0,
+        summarizationMethod: "none",
+      },
     };
 
     const result = buildWindowedMessages(windowed);
@@ -159,7 +186,15 @@ describe('buildWindowedMessages', () => {
       recentMessages: [
         { role: 'user', content: 'Hello!' },
       ] as Message[],
-      stats: { originalCount: 2, windowedCount: 1, tokensSaved: 50 },
+      meta: {
+        originalMessageCount: 2,
+        windowedMessageCount: 2,
+        trimmedMessageCount: 0,
+        originalTokenEstimate: 150,
+        windowedTokenEstimate: 150,
+        summaryTokenEstimate: 50,
+        summarizationMethod: "heuristic",
+      },
     };
 
     const result = buildWindowedMessages(windowed);
@@ -176,7 +211,15 @@ describe('buildWindowedMessages', () => {
       recentMessages: [
         { role: 'user', content: 'Hello!' },
       ] as Message[],
-      stats: { originalCount: 1, windowedCount: 1, tokensSaved: 0 },
+      meta: {
+        originalMessageCount: 1,
+        windowedMessageCount: 1,
+        trimmedMessageCount: 0,
+        originalTokenEstimate: 50,
+        windowedTokenEstimate: 50,
+        summaryTokenEstimate: 0,
+        summarizationMethod: "none",
+      },
     };
 
     const result = buildWindowedMessages(windowed);
@@ -257,7 +300,7 @@ describe('integration tests', () => {
 
     expect(windowed.contextSummary).toBeTruthy();
     expect(windowed.recentMessages).toHaveLength(6);
-    expect(windowed.stats.tokensSaved).toBeGreaterThan(0);
+    expect(windowed.meta.originalTokenEstimate).toBeGreaterThan(windowed.meta.windowedTokenEstimate);
 
     // Rebuild messages
     const rebuiltMessages = buildWindowedMessages(windowed);
