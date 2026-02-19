@@ -336,16 +336,31 @@ const slimclawPlugin = {
         let routingResult: { tier: string; confidence: number; model: string; signals: string[] } | null = null;
         if (pluginConfig.routing.enabled) {
           try {
-            const messages: Message[] = ((historyMessages as any[]) || []).map((msg: any) => ({
-              role: msg.role || 'user',
-              content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
-            }));
-            // Add current prompt as last message
-            if (prompt) {
-              messages.push({ role: 'user', content: prompt });
+            // Only classify the CURRENT request intent, not the full history.
+            // Full history causes everything to be "reasoning/lengthy-content".
+            // Include: system prompt (for context) + last 3 messages (conversational flow) + current prompt.
+            const classificationMessages: Message[] = [];
+            
+            if (systemPrompt) {
+              classificationMessages.push({ role: 'system', content: systemPrompt });
             }
             
-            const classification = classifyWithRouter(messages, { originalModel: (event as any).model });
+            // Last few messages for conversational context
+            const history = (historyMessages as any[]) || [];
+            const recentHistory = history.slice(-3);
+            for (const msg of recentHistory) {
+              if (!msg) continue;
+              classificationMessages.push({
+                role: msg.role || 'user',
+                content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
+              });
+            }
+            
+            if (prompt) {
+              classificationMessages.push({ role: 'user', content: prompt });
+            }
+            
+            const classification = classifyWithRouter(classificationMessages, { originalModel: (event as any).model });
             const tierModel = pluginConfig.routing.tiers[classification.tier];
             routingResult = {
               tier: classification.tier,
