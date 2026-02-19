@@ -1,0 +1,189 @@
+import { z } from "zod";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+
+// ============================================================
+// Zod Schema for SlimClaw Configuration
+// ============================================================
+
+export const SlimClawConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  mode: z.enum(["shadow", "active"]).default("shadow"),
+
+  windowing: z.object({
+    enabled: z.boolean().default(true),
+    /** Max messages to keep in the recent window */
+    maxMessages: z.number().int().min(2).max(100).default(10),
+    /** Max tokens in the recent window (overrides maxMessages if hit first) */
+    maxTokens: z.number().int().min(500).max(50000).default(4000),
+    /** Start summarizing when message count exceeds this */
+    summarizeThreshold: z.number().int().min(2).default(8),
+  }).default({}),
+
+  routing: z.object({
+    enabled: z.boolean().default(false), // P1 - disabled for MVP
+    /** Allow downgrading to cheaper models */
+    allowDowngrade: z.boolean().default(true),
+    /** Minimum classification confidence to apply routing */
+    minConfidence: z.number().min(0).max(1).default(0.4),
+    /** Model tiers configuration */
+    tiers: z.record(z.string()).default({
+      simple: "anthropic/claude-3-haiku-20240307",
+      mid: "anthropic/claude-sonnet-4-20250514", 
+      complex: "anthropic/claude-opus-4-20250514",
+      reasoning: "anthropic/claude-opus-4-20250514",
+    }),
+  }).default({}),
+
+  caching: z.object({
+    enabled: z.boolean().default(true),
+    /** Inject cache_control breakpoints on system prompt */
+    injectBreakpoints: z.boolean().default(true),
+    /** Minimum content length (chars) to inject cache breakpoints */
+    minContentLength: z.number().int().default(1000),
+  }).default({}),
+
+  metrics: z.object({
+    enabled: z.boolean().default(true),
+    /** Log file path relative to ~/.openclaw/data/slimclaw/ */
+    logPath: z.string().default("metrics"),
+    /** Flush metrics to disk every N milliseconds */
+    flushIntervalMs: z.number().int().default(10000),
+  }).default({}),
+});
+
+export type SlimClawConfig = z.infer<typeof SlimClawConfigSchema>;
+
+// ============================================================
+// Default Configuration
+// ============================================================
+
+export const DEFAULT_CONFIG: SlimClawConfig = {
+  enabled: true,
+  mode: "shadow", // Safe for MVP
+  windowing: {
+    enabled: true,
+    maxMessages: 10,
+    maxTokens: 4000,
+    summarizeThreshold: 8,
+  },
+  routing: {
+    enabled: false, // P1 - start with shadow mode only
+    allowDowngrade: true,
+    minConfidence: 0.4,
+    tiers: {
+      simple: "anthropic/claude-3-haiku-20240307",
+      mid: "anthropic/claude-sonnet-4-20250514",
+      complex: "anthropic/claude-opus-4-20250514",
+      reasoning: "anthropic/claude-opus-4-20250514",
+    },
+  },
+  caching: {
+    enabled: true,
+    injectBreakpoints: true,
+    minContentLength: 1000,
+  },
+  metrics: {
+    enabled: true,
+    logPath: "metrics",
+    flushIntervalMs: 10000,
+  },
+};
+
+// ============================================================
+// Configuration Loading Functions
+// ============================================================
+
+/**
+ * Loads SlimClaw configuration from openclaw.json or uses defaults.
+ * 
+ * @param configPath - Optional path to openclaw.json (defaults to ~/.openclaw/openclaw.json)
+ * @returns Validated and typed SlimClawConfig
+ */
+export function loadConfig(configPath?: string): SlimClawConfig {
+  const path = configPath || join(homedir(), ".openclaw", "openclaw.json");
+  
+  try {
+    const content = readFileSync(path, "utf8");
+    const parsed = JSON.parse(content);
+    
+    // Extract slimclaw config from plugins section
+    const pluginConfig = parsed?.plugins?.slimclaw || {};
+    
+    // Parse and validate with Zod
+    const result = SlimClawConfigSchema.safeParse(pluginConfig);
+    
+    if (result.success) {
+      return result.data;
+    } else {
+      console.warn("SlimClaw config validation failed, using defaults:", result.error.issues);
+      return DEFAULT_CONFIG;
+    }
+    
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      // File doesn't exist, use defaults
+      console.info("openclaw.json not found, using SlimClaw defaults");
+      return DEFAULT_CONFIG;
+    }
+    
+    console.error("Failed to load openclaw.json:", error);
+    return DEFAULT_CONFIG;
+  }
+}
+
+/**
+ * Validates a raw configuration object and returns typed SlimClawConfig.
+ * 
+ * @param config - Raw configuration object to validate
+ * @returns Validation result with typed config or error details
+ */
+export function validateConfig(config: unknown): {
+  success: true;
+  data: SlimClawConfig;
+} | {
+  success: false;
+  error: z.ZodError;
+} {
+  const result = SlimClawConfigSchema.safeParse(config);
+  
+  if (result.success) {
+    return {
+      success: true,
+      data: result.data,
+    };
+  } else {
+    return {
+      success: false,
+      error: result.error,
+    };
+  }
+}
+
+/**
+ * Merges user configuration with defaults, ensuring all required fields are present.
+ * 
+ * @param userConfig - Partial user configuration
+ * @returns Complete SlimClawConfig with defaults applied
+ */
+export function mergeWithDefaults(userConfig: Partial<SlimClawConfig>): SlimClawConfig {
+  return SlimClawConfigSchema.parse(userConfig);
+}
+
+/**
+ * Gets configuration for a specific agent, applying any agent-specific overrides.
+ * Note: This is a placeholder for future agent-specific config support.
+ * 
+ * @param baseConfig - Base configuration
+ * @param agentId - Agent identifier
+ * @returns Configuration for the specific agent
+ */
+export function getAgentConfig(
+  baseConfig: SlimClawConfig,
+  agentId?: string
+): SlimClawConfig {
+  // For now, just return base config
+  // TODO: Implement agent-specific overrides from design doc
+  return baseConfig;
+}

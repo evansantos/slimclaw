@@ -1,0 +1,32 @@
+{
+  "name": "slimclaw",
+  "version": "0.1.0",
+  "description": "Inference optimization middleware — windowing, routing, caching",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage"
+  },
+  "dependencies": {
+    "openclaw": "*",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0",
+    "@vitest/coverage-v8": "^1.0.0"
+  },
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "optimization",
+    "windowing",
+    "inference"
+  ],
+  "author": "SlimClaw Team",
+  "license": "MIT"
+}
