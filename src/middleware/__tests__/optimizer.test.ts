@@ -1,3 +1,4 @@
+import { describe, it, test, expect, beforeEach, vi } from 'vitest';
 /**
  * Tests for SlimClaw Optimizer Middleware
  * Testa a integração de windowing + cache injection

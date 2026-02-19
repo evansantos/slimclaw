@@ -10,10 +10,10 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { resolveModel, type ModelRoutingDecision } from '../model-router.js';
-import type { ClassificationResult } from '../../classifier/index.js';
-import type { SlimClawConfig } from '../../config.js';
-import type { RoutingContext } from '../overrides.js';
+import { resolveModel, type ModelRoutingDecision } from '../../src/routing/model-router.js';
+import type { ClassificationResult } from '../../src/classifier/index.js';
+import type { SlimClawConfig } from '../../src/config.js';
+import type { RoutingContext } from '../../src/routing/overrides.js';
 import { 
   ROUTING_TEST_DATASET, 
   EDGE_CASE_DATASET, 

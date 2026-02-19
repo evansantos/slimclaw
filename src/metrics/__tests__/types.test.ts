@@ -2,7 +2,7 @@
  * Tests for SlimClaw Metrics Types
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import type {
   OptimizerMetrics,
   MetricsStats,

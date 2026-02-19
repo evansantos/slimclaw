@@ -2,7 +2,7 @@
  * Testes para o módulo de Cache Injection
  */
 
-import { describe, test, expect } from '@jest/globals';
+import { describe, test, expect } from 'vitest';
 import {
   injectCacheBreakpoints,
   injectCacheBreakpointsSimple,
