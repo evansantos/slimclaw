@@ -6,7 +6,7 @@
 
 Token optimization plugin for OpenClaw. Tracks cache hits, measures savings, provides real-time metrics, and integrates intelligent model routing via [ClawRouter](https://github.com/BlockRunAI/clawrouter).
 
-**422 tests passing** · **0 vulnerabilities** · **Node 22+**
+**0 vulnerabilities** · **Node 22+**
 
 ## Features
 
