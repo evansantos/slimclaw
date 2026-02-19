@@ -146,6 +146,24 @@ console.log(`Confidence: ${decision.confidence}, Savings: ${decision.savings}%`)
 4. **Model Selection** — Tier mapped to configured model with downgrade protection
 5. **Fallback** — Errors gracefully fall back to original model
 
+### Custom Pricing
+
+Override default model pricing in `slimclaw.config.json` to keep costs accurate as providers update rates:
+
+```json
+{
+  "routing": {
+    "enabled": true,
+    "pricing": {
+      "anthropic/claude-sonnet-4-20250514": { "inputPer1k": 0.003, "outputPer1k": 0.015 },
+      "anthropic/claude-3-haiku-20240307": { "inputPer1k": 0.00025, "outputPer1k": 0.00125 }
+    }
+  }
+}
+```
+
+> **Note:** `@blockrun/clawrouter` pulls `viem` as a transitive dependency (~50 packages). This doesn't affect functionality but adds to `node_modules` size. See [BlockRunAI/clawrouter#1](https://github.com/BlockRunAI/clawrouter/issues/1) for tracking.
+
 ## Coming Soon
 
 - **Active Mode** — Actually apply optimizations (pending OpenClaw hook mutation support)

@@ -13,7 +13,7 @@ import { classifyWithRouter } from '../classifier/clawrouter-classifier.js';
 import { classifyComplexity } from '../classifier/index.js';
 import type { ComplexityTier } from '../metrics/types.js';
 import { TIER_ORDER } from '../routing/constants.js';
-import { calculateRoutingSavings, estimateModelCost } from '../routing/pricing.js';
+import { calculateRoutingSavings, estimateModelCost, DEFAULT_MODEL_PRICING } from '../routing/pricing.js';
 
 export interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -183,8 +183,12 @@ export async function inferenceOptimizer(
               }
               
               // Calculate estimated savings using shared pricing functions
-              routingSavingsPercent = calculateRoutingSavings(context.originalModel, classificationResult.tier);
-              routingCostEstimate = estimateModelCost(tierModel, originalTokens);
+              // Merge user-configured pricing with defaults (user overrides win)
+              const pricing = config.routing.pricing 
+                ? { ...DEFAULT_MODEL_PRICING, ...config.routing.pricing }
+                : DEFAULT_MODEL_PRICING;
+              routingSavingsPercent = calculateRoutingSavings(context.originalModel, classificationResult.tier, pricing);
+              routingCostEstimate = estimateModelCost(tierModel, originalTokens, 0, pricing);
 
               logger.info('Routing applied', {
                 originalModel: context.originalModel,
@@ -500,10 +504,6 @@ export function generateDebugHeaders(
     headers['X-SlimClaw-Caching'] = result.metrics.cacheBreakpointsInjected > 0 ? 'applied' : 'skipped';
     headers['X-SlimClaw-Classification'] = result.metrics.classificationTier;
     headers['X-SlimClaw-Routing'] = result.metrics.routingApplied ? 'applied' : 'skipped';
-    
-    if (result.metrics.trimmedMessages > 0) {
-      headers['X-SlimClaw-Trimmed-Messages'] = result.metrics.trimmedMessages.toString();
-    }
     
     if (result.metrics.trimmedMessages > 0) {
       headers['X-SlimClaw-Trimmed-Messages'] = result.metrics.trimmedMessages.toString();

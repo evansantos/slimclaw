@@ -14,19 +14,28 @@ import type { RoutingDecision } from '../routing/types.js';
 
 /**
  * Singleton hybrid router instance (lazy initialization)
+ * Use resetHybridRouter() in tests or to reconfigure at runtime.
  */
 let hybridRouterInstance: HybridRouter | null = null;
 
 /**
- * Get or create the singleton hybrid router instance
+ * Get or create the singleton hybrid router instance.
+ * Accepts optional options for circuit breaker configuration.
  */
-function getHybridRouter(): HybridRouter {
+function getHybridRouter(options?: { maxFailures?: number; cooldownMs?: number; confidenceThreshold?: number }): HybridRouter {
   if (!hybridRouterInstance) {
     const clawRouterAdapter = new ClawRouterAdapter();
     const heuristicProvider = new HeuristicProvider();
-    hybridRouterInstance = new HybridRouter(clawRouterAdapter, heuristicProvider);
+    hybridRouterInstance = new HybridRouter(clawRouterAdapter, heuristicProvider, options);
   }
   return hybridRouterInstance;
+}
+
+/**
+ * Reset the singleton router (for testing or runtime reconfiguration)
+ */
+export function resetHybridRouter(): void {
+  hybridRouterInstance = null;
 }
 
 /**

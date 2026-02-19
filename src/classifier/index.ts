@@ -30,7 +30,8 @@ export {
 export { 
   classifyWithRouter,
   extractTextFromMessages,
-  getHybridRouter
+  getHybridRouter,
+  resetHybridRouter
 } from './clawrouter-classifier.js';
 
 // Types and interfaces
