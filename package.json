@@ -1,9 +1,6 @@
 {
-  "name": "@evansantos/slimclaw",
+  "name": "slimclaw",
   "version": "0.1.0",
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/evansantos/slimclaw.git"
