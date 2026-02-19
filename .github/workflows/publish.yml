@@ -6,6 +6,17 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 0.1.0)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Dry run (skip actual publish)'
+        required: false
+        default: 'false'
+        type: boolean
 
 jobs:
   publish:
@@ -36,9 +47,16 @@ jobs:
       run: test -d dist && test -f dist/index.js && echo "✅ Build OK"
     
     - name: Publish to npm
+      if: ${{ github.event.inputs.dry_run != 'true' }}
       run: npm publish --access public
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    
+    - name: Dry run - show what would be published
+      if: ${{ github.event.inputs.dry_run == 'true' }}
+      run: |
+        echo "📦 Dry run - would publish:"
+        npm pack --dry-run
     
     - name: Create release notes
       uses: actions/github-script@v7
