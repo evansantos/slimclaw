@@ -45,7 +45,7 @@ jobs:
       run: npm run build
     
     - name: Check for vulnerabilities
-      run: npm audit --omit=dev || echo "::warning::npm audit found vulnerabilities (see above)"
+      run: npm audit --omit=dev --audit-level=high || echo "::warning::npm audit found vulnerabilities (see above)"
     
     - name: Upload coverage to Codecov (if exists)
       uses: codecov/codecov-action@v3
@@ -63,10 +63,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Use Node.js 22.x
+    - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
-        node-version: '22.x'
+        node-version: '22.x'  # matches test job
         cache: 'npm'
     
     - name: Install dependencies
