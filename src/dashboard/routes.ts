@@ -278,7 +278,7 @@ export function setupRoutes(collector: MetricsCollector): Hono {
         routingRequests: totalRoutingRequests
       });
     } catch (error) {
-      logger.error('Failed to fetch routing stats', error instanceof Error ? error : { error });
+      logger.error('Failed to fetch routing stats', error as Error | Record<string, unknown>);
       return c.json({ 
         error: 'Internal server error',
         timestamp: new Date().toISOString(),

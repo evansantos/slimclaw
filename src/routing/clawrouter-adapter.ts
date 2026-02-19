@@ -1,5 +1,8 @@
 import { route, DEFAULT_ROUTING_CONFIG } from '@blockrun/clawrouter';
 import type { IRoutingProvider, RoutingDecision } from './types.js';
+import { createSlimClawLogger } from '../logging/index.js';
+
+const logger = createSlimClawLogger('info', { component: 'ClawRouterAdapter' });
 
 /**
  * Adapter that implements IRoutingProvider using @blockrun/clawrouter
@@ -32,8 +35,18 @@ export class ClawRouterAdapter implements IRoutingProvider {
       }
     );
 
+    // Check for incomplete results and log when defaults are used
+    if (!result.model || !result.tier) {
+      logger.warn('ClawRouter returned incomplete result, using defaults', {
+        hasModel: !!result.model,
+        hasTier: !!result.tier
+      });
+    }
+
     return {
+      // Default model: anthropic/claude-sonnet-4 - balanced performance/cost for mid-tier tasks
       model: result.model || 'anthropic/claude-sonnet-4',
+      // Default tier: mid - assumes moderate complexity when router is uncertain
       tier: result.tier || 'mid',
       confidence: result.confidence ?? 0.5,
       savings: result.savings ?? 0,

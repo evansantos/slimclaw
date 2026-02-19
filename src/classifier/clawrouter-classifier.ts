@@ -156,7 +156,9 @@ function mapRoutingDecisionToClassification(
   signals.push(`model:${decision.model}`);
   signals.push(`tier:${tier}`);
   
-  if (decision.confidence > 0.8) {
+  if (decision.confidence === 0) {
+    signals.push('zero-confidence');
+  } else if (decision.confidence > 0.8) {
     signals.push('high-confidence');
   } else if (decision.confidence < 0.5) {
     signals.push('low-confidence');
