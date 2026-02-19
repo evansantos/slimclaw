@@ -344,11 +344,9 @@ const slimclawPlugin = {
             // Only classify the CURRENT request intent, not the full history.
             // Full history causes everything to be "reasoning/lengthy-content".
             // Include: system prompt (for context) + last 3 messages (conversational flow) + current prompt.
+            // Classify based on user intent only — exclude system prompt
+            // (system prompt is static context, not indicative of request complexity)
             const classificationMessages: Message[] = [];
-            
-            if (systemPrompt) {
-              classificationMessages.push({ role: 'system', content: systemPrompt });
-            }
             
             // Last few messages for conversational context
             const history = (historyMessages as any[]) || [];
