@@ -1,15 +1,30 @@
 # SlimClaw 🦞
 
-Token optimization plugin for OpenClaw. Tracks cache hits, measures savings, and provides real-time metrics.
+[![npm version](https://img.shields.io/npm/v/slimclaw)](https://www.npmjs.com/package/slimclaw)
+[![CI](https://github.com/evansantos/slimclaw/actions/workflows/ci.yml/badge.svg)](https://github.com/evansantos/slimclaw/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Token optimization plugin for OpenClaw. Tracks cache hits, measures savings, provides real-time metrics, and integrates intelligent model routing via [ClawRouter](https://github.com/BlockRunAI/clawrouter).
+
+**0 vulnerabilities** · **Node 22+**
 
 ## Features
 
 - **Metrics Tracking** — Input/output tokens, cache reads/writes, estimated savings
 - **Cache Breakpoint Injection** — Optimizes Anthropic's prompt caching
+- **Intelligent Model Routing** — Hybrid ClawRouter + heuristic classification for cost optimization
 - **Dashboard** — Dark theme web UI at `http://localhost:3333`
 - **Shadow Mode** — Measures without modifying requests (safe to run)
 
 ## Installation
+
+### From npm
+
+```bash
+npm install slimclaw
+```
+
+### From source
 
 ```bash
 git clone https://github.com/evansantos/slimclaw ~/.openclaw/plugins/slimclaw
@@ -164,9 +179,24 @@ Override default model pricing in `slimclaw.config.json` to keep costs accurate 
 
 > **Note:** `@blockrun/clawrouter` pulls `viem` as a transitive dependency (~50 packages). This doesn't affect functionality but adds to `node_modules` size. See [BlockRunAI/clawrouter#1](https://github.com/BlockRunAI/clawrouter/issues/1) for tracking.
 
-## Coming Soon
+## Status
 
-- **Active Mode** — Actually apply optimizations (pending OpenClaw hook mutation support)
+- **v0.1.0** published on [npm](https://www.npmjs.com/package/slimclaw)
+- **Observation mode** — routing classifies and logs recommendations without mutating model selection
+- **Active mode blocked** — waiting for OpenClaw `historyMessages` mutation support ([#20416](https://github.com/openclaw/openclaw/issues/20416))
+- **9 open issues** — see [issues](https://github.com/evansantos/slimclaw/issues)
+- **8 PRs merged** — including ClawRouter integration, routing classification, GitSniff fixes
+
+## Contributing
+
+PRs welcome! The project uses branch protection — all changes go through PR with CI + [GitSniff](https://gitsniff.ai) review.
+
+```bash
+git clone https://github.com/evansantos/slimclaw
+cd slimclaw
+npm install
+npm test
+```
 
 ## License
 
