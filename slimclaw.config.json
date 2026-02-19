@@ -8,6 +8,19 @@
     "enabled": true,
     "minContentLength": 1000
   },
+  "routing": {
+    "enabled": true,
+    "allowDowngrade": true,
+    "minConfidence": 0.4,
+    "pinnedModels": [],
+    "tiers": {
+      "simple": "anthropic/claude-3-haiku-20240307",
+      "mid": "anthropic/claude-sonnet-4-20250514",
+      "complex": "anthropic/claude-opus-4-6",
+      "reasoning": "anthropic/claude-opus-4-6"
+    },
+    "reasoningBudget": 10000
+  },
   "dashboard": {
     "enabled": true,
     "port": 3333
