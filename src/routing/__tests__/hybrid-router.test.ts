@@ -7,6 +7,14 @@ describe('HybridRouter', () => {
   let fallbackProvider: IRoutingProvider;
   let router: HybridRouter;
 
+  const mockDecision: RoutingDecision = {
+    model: 'test-model',
+    tier: 'mid',
+    confidence: 0.8,
+    savings: 10,
+    costEstimate: 0.02
+  };
+
   beforeEach(() => {
     vi.useFakeTimers();
     
@@ -33,6 +41,34 @@ describe('HybridRouter', () => {
     it('should create router with correct name', () => {
       expect(router.name).toBe('hybrid(primary,fallback)');
     });
+
+    it('should use default options when not provided', () => {
+      const routerWithDefaults = new HybridRouter(primaryProvider, fallbackProvider);
+      expect(routerWithDefaults.name).toBe('hybrid(primary,fallback)');
+      // Default behavior should work as tested in other tests
+    });
+
+    it('should accept custom options', () => {
+      const customOptions = {
+        maxFailures: 5,
+        cooldownMs: 30000,
+        confidenceThreshold: 0.7
+      };
+      const customRouter = new HybridRouter(primaryProvider, fallbackProvider, customOptions);
+      expect(customRouter.name).toBe('hybrid(primary,fallback)');
+      
+      // Test custom confidence threshold by using a decision with confidence 0.6
+      const mediumConfidenceDecision = { ...mockDecision, confidence: 0.6 };
+      const fallbackDecision = { ...mockDecision, model: 'fallback-model' };
+      
+      (primaryProvider.route as any).mockReturnValue(mediumConfidenceDecision);
+      (fallbackProvider.route as any).mockReturnValue(fallbackDecision);
+      
+      const result = customRouter.route('test', 100);
+      
+      // With confidence threshold 0.7, should fallback even with 0.6 confidence
+      expect(fallbackProvider.route).toHaveBeenCalled();
+    });
   });
 
   describe('isAvailable', () => {
@@ -53,13 +89,6 @@ describe('HybridRouter', () => {
   });
 
   describe('route', () => {
-    const mockDecision: RoutingDecision = {
-      model: 'test-model',
-      tier: 'mid',
-      confidence: 0.8,
-      savings: 10,
-      costEstimate: 0.02
-    };
 
     it('should use primary provider when available and confident', () => {
       (primaryProvider.route as any).mockReturnValue(mockDecision);

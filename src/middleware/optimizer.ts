@@ -12,6 +12,8 @@ import { createRequestLogger } from '../logging/index.js';
 import { classifyWithRouter } from '../classifier/clawrouter-classifier.js';
 import { classifyComplexity } from '../classifier/index.js';
 import type { ComplexityTier } from '../metrics/types.js';
+import { TIER_ORDER } from '../routing/constants.js';
+import { calculateRoutingSavings, estimateModelCost } from '../routing/pricing.js';
 
 export interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -94,7 +96,7 @@ export async function inferenceOptimizer(
     
     // Routing variables
     let routingApplied = false;
-    let targetModel = context.originalModel ?? "unknown";
+    let targetModel = context.originalModel || null;
     let modelDowngraded = false;
     let modelUpgraded = false;
     let routingTier: ComplexityTier | undefined;
@@ -144,65 +146,69 @@ export async function inferenceOptimizer(
     let classificationResult;
     try {
       if (config.routing.enabled) {
-        logger.debug('Starting routing step');
+        // Skip routing entirely if originalModel is undefined
+        if (!context.originalModel) {
+          logger.warn('Routing skipped - originalModel is undefined');
+          classificationResult = classifyComplexity(optimizedMessages);
+        } else {
+          logger.debug('Starting routing step');
 
-        // Use ClawRouter for classification when routing is enabled
-        classificationResult = classifyWithRouter(optimizedMessages);
-        
-        // Extract routing data from classification result
-        routingTier = classificationResult.tier;
-        routingConfidence = classificationResult.confidence;
-        
-        // Determine target model based on classification
-        const tierModel = config.routing.tiers[classificationResult.tier];
-        if (tierModel && tierModel !== (context.originalModel ?? "unknown")) {
+          // Use ClawRouter for classification when routing is enabled
+          classificationResult = classifyWithRouter(optimizedMessages);
           
-          // Check if original model is pinned (should not be routed)
-          const originalModel = context.originalModel ?? "unknown";
-          const isPinned = config.routing.pinnedModels.includes(originalModel);
+          // Extract routing data from classification result
+          routingTier = classificationResult.tier;
+          routingConfidence = classificationResult.confidence;
           
-          // Only apply routing if confidence meets threshold and model isn't pinned
-          if (classificationResult.confidence >= config.routing.minConfidence && !isPinned) {
-            targetModel = tierModel;
-            routingApplied = true;
+          // Determine target model based on classification
+          const tierModel = config.routing.tiers[classificationResult.tier];
+          if (tierModel && tierModel !== context.originalModel) {
             
-            // Determine if it's an upgrade or downgrade
-            // This is a simplified check - in production you'd want actual model tier mapping
-            const originalTier = getModelTier(originalModel, config.routing.tiers);
-            const newTier = classificationResult.tier;
+            // Check if original model is pinned (should not be routed)
+            const isPinned = config.routing.pinnedModels.includes(context.originalModel);
             
-            if (isModelDowngrade(originalTier, newTier)) {
-              modelDowngraded = true;
-            } else if (isModelUpgrade(originalTier, newTier)) {
-              modelUpgraded = true;
+            // Only apply routing if confidence meets threshold and model isn't pinned
+            if (classificationResult.confidence >= config.routing.minConfidence && !isPinned) {
+              targetModel = tierModel;
+              routingApplied = true;
+              
+              // Determine if it's an upgrade or downgrade using shared tier order
+              const originalTier = getModelTier(context.originalModel, config.routing.tiers);
+              const newTier = classificationResult.tier;
+              
+              if (isModelDowngrade(originalTier, newTier)) {
+                modelDowngraded = true;
+              } else if (isModelUpgrade(originalTier, newTier)) {
+                modelUpgraded = true;
+              }
+              
+              // Calculate estimated savings using shared pricing functions
+              routingSavingsPercent = calculateRoutingSavings(context.originalModel, classificationResult.tier);
+              routingCostEstimate = estimateModelCost(tierModel, originalTokens);
+
+              logger.info('Routing applied', {
+                originalModel: context.originalModel,
+                targetModel,
+                tier: classificationResult.tier,
+                confidence: classificationResult.confidence,
+                downgraded: modelDowngraded,
+                upgraded: modelUpgraded,
+                savingsPercent: routingSavingsPercent,
+              });
+            } else {
+              logger.debug('Routing skipped', {
+                reason: isPinned ? 'model_pinned' : 'low_confidence',
+                confidence: classificationResult.confidence,
+                threshold: config.routing.minConfidence,
+              });
             }
-            
-            // Calculate estimated savings (simplified - would use actual pricing in production)
-            routingSavingsPercent = calculateRoutingSavings(originalModel, targetModel, classificationResult.tier);
-            routingCostEstimate = estimateModelCost(targetModel, originalTokens);
-
-            logger.info('Routing applied', {
-              originalModel,
-              targetModel,
-              tier: classificationResult.tier,
-              confidence: classificationResult.confidence,
-              downgraded: modelDowngraded,
-              upgraded: modelUpgraded,
-              savingsPercent: routingSavingsPercent,
-            });
           } else {
-            logger.debug('Routing skipped', {
-              reason: isPinned ? 'model_pinned' : 'low_confidence',
-              confidence: classificationResult.confidence,
-              threshold: config.routing.minConfidence,
+            logger.debug('Routing skipped - no tier model change needed', {
+              currentModel: context.originalModel,
+              suggestedTier: classificationResult.tier,
+              tierModel,
             });
           }
-        } else {
-          logger.debug('Routing skipped - no tier model change needed', {
-            currentModel: context.originalModel,
-            suggestedTier: classificationResult.tier,
-            tierModel,
-          });
         }
       } else {
         // Routing disabled - use fallback heuristic classifier
@@ -387,53 +393,19 @@ function getModelTier(model: string, tiers: Record<string, string>): ComplexityT
  * Helper function to check if routing represents a model downgrade
  */
 function isModelDowngrade(originalTier: ComplexityTier | null, newTier: ComplexityTier): boolean {
-  const tierOrder = { simple: 0, mid: 1, complex: 2, reasoning: 3 };
   if (!originalTier) return false;
-  return tierOrder[newTier] < tierOrder[originalTier];
+  return TIER_ORDER[newTier] < TIER_ORDER[originalTier];
 }
 
 /**
  * Helper function to check if routing represents a model upgrade
  */
 function isModelUpgrade(originalTier: ComplexityTier | null, newTier: ComplexityTier): boolean {
-  const tierOrder = { simple: 0, mid: 1, complex: 2, reasoning: 3 };
   if (!originalTier) return false;
-  return tierOrder[newTier] > tierOrder[originalTier];
+  return TIER_ORDER[newTier] > TIER_ORDER[originalTier];
 }
 
-/**
- * Helper function to calculate estimated routing savings
- * In production, this would use actual model pricing data
- */
-function calculateRoutingSavings(_originalModel: string, _targetModel: string, tier: ComplexityTier): number {
-  // Simplified savings calculation based on tier
-  // In production, you'd use actual pricing data
-  // Returns percentage (0-100, not 0-1)
-  const savingsMap: Record<ComplexityTier, number> = {
-    simple: 70,    // 70% savings for simple tasks
-    mid: 30,       // 30% savings for mid-complexity
-    complex: 10,   // 10% savings for complex tasks
-    reasoning: -20  // 20% cost increase for reasoning tasks
-  };
-  
-  return savingsMap[tier] || 0;
-}
-
-/**
- * Helper function to estimate model cost
- * Simplified implementation - in production would use actual pricing
- */
-function estimateModelCost(model: string, tokens: number): number {
-  // Simplified cost estimation ($ per 1000 tokens)
-  const costPer1k: Record<string, number> = {
-    'anthropic/claude-3-haiku-20240307': 0.0025,
-    'anthropic/claude-sonnet-4-20250514': 0.015,
-    'anthropic/claude-opus-4-20250514': 0.075,
-  };
-  
-  const rate = costPer1k[model] || 0.015; // Default to sonnet pricing
-  return (tokens / 1000) * rate;
-}
+// Pricing functions now imported from ../routing/pricing.js
 
 /**
  * Cria resultado de passthrough (sem otimização)
@@ -459,7 +431,7 @@ function createPassthroughResult(
     sessionKey: context.sessionKey,
     mode: context.mode ?? "active",
     
-    originalModel: context.originalModel ?? "unknown",
+    originalModel: context.originalModel || null,
     originalMessageCount: messages.length,
     originalTokenEstimate: tokens,
     
@@ -476,7 +448,7 @@ function createPassthroughResult(
     classificationSignals: [],
     
     routingApplied: false,
-    targetModel: context.originalModel ?? "unknown",
+    targetModel: context.originalModel || null,
     modelDowngraded: false,
     modelUpgraded: false,
     combinedSavingsPercent: 0,

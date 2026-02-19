@@ -19,7 +19,7 @@ export interface OptimizerMetrics {
   mode: "shadow" | "active";
 
   // — Input state (before optimization) —
-  originalModel: string;
+  originalModel: string | null;
   originalMessageCount: number;
   originalTokenEstimate: number;
 
@@ -39,7 +39,7 @@ export interface OptimizerMetrics {
 
   // — Routing —
   routingApplied: boolean;
-  targetModel: string;
+  targetModel: string | null;
   modelDowngraded: boolean;
   modelUpgraded: boolean;
   routingTier?: ComplexityTier;

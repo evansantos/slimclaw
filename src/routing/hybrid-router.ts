@@ -18,15 +18,21 @@ export class HybridRouter implements IRoutingProvider {
   private circuitState: CircuitBreakerState = CircuitBreakerState.CLOSED;
   private failureCount = 0;
   private lastFailureTime = 0;
-  private readonly maxFailures = 3;
-  private readonly cooldownMs = 60000; // 60 seconds
-  private readonly confidenceThreshold = 0.5;
+  private readonly maxFailures: number;
+  private readonly cooldownMs: number;
+  private readonly confidenceThreshold: number;
 
   constructor(
     private readonly primaryProvider: IRoutingProvider,
-    private readonly fallbackProvider: IRoutingProvider
+    private readonly fallbackProvider: IRoutingProvider,
+    options?: { maxFailures?: number; cooldownMs?: number; confidenceThreshold?: number }
   ) {
     this.name = `hybrid(${primaryProvider.name},${fallbackProvider.name})`;
+    
+    // Set configurable options with defaults
+    this.maxFailures = options?.maxFailures ?? 3;
+    this.cooldownMs = options?.cooldownMs ?? 60000; // 60 seconds
+    this.confidenceThreshold = options?.confidenceThreshold ?? 0.5;
   }
 
   /**
@@ -87,8 +93,9 @@ export class HybridRouter implements IRoutingProvider {
       }
       
       // Both failed completely
-      const error = primaryError || (fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError)));
-      throw new Error(`All routing providers failed: ${error.message}`);
+      const primaryMessage = primaryError?.message || 'unknown error';
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      throw new Error(`All routing providers failed. Primary: ${primaryMessage}, Fallback: ${fallbackMessage}`);
     }
   }
 

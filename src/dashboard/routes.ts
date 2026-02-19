@@ -248,8 +248,8 @@ export function setupRoutes(collector: MetricsCollector): Hono {
       const routingMetrics = recent.filter(m => m.routingApplied);
       const hasRoutingData = routingMetrics.length > 0;
 
-      // Tier distribution percentages
-      const totalRoutingRequests = Object.values(stats.routingTierDistribution).reduce((a, b) => a + b, 0);
+      // Tier distribution percentages (use routingMetrics.length as denominator)
+      const totalRoutingRequests = routingMetrics.length;
       const tierDistribution = totalRoutingRequests > 0 ? {
         simple: Math.round((stats.routingTierDistribution.simple / totalRoutingRequests) * 100),
         mid: Math.round((stats.routingTierDistribution.mid / totalRoutingRequests) * 100), 

@@ -55,14 +55,30 @@ export function extractTextFromMessages(messages: Message[]): string {
 
 /**
  * Calculate approximate token count from text content
- * Uses a simple heuristic: ~4 characters per token (GPT-style tokenization approximation)
+ * Uses an improved heuristic that accounts for whitespace, code vs prose, punctuation
  */
 function calculateContextTokens(text: string): number {
   if (!text) return 0;
   
-  // Rough approximation: 4 characters per token on average
-  // This is a simplified heuristic, real tokenization would be more accurate
-  return Math.ceil(text.length / 4);
+  // Split by whitespace to get word count
+  const words = text.trim().split(/\s+/).filter(word => word.length > 0);
+  const wordCount = words.length;
+  
+  // Heuristic: code blocks get ~1.3 tokens per word, prose ~1.1 tokens per word
+  // We approximate by checking for code indicators (braces, semicolons, etc.)
+  const codeIndicators = (text.match(/[{}();[\]]/g) || []).length;
+  const isLikelyCode = codeIndicators > wordCount * 0.1; // 10% threshold
+  
+  const tokensPerWord = isLikelyCode ? 1.3 : 1.1;
+  const estimatedTokens = Math.ceil(wordCount * tokensPerWord);
+  
+  // Fallback to character-based estimation as minimum
+  const charBasedTokens = Math.ceil(text.length / 4);
+  
+  // Return the maximum of word-based and character-based estimates
+  // This provides a more accurate heuristic while maintaining a reasonable minimum
+  // Note: Real tokenization would be more accurate, but this balances speed and precision
+  return Math.max(estimatedTokens, charBasedTokens);
 }
 
 /**
@@ -76,25 +92,40 @@ function mapRoutingDecisionToClassification(
 ): ClassificationResult {
   const validTiers = new Set(['simple', 'mid', 'complex', 'reasoning']);
   const normalized = decision.tier.toLowerCase();
-  const tier = (validTiers.has(normalized) ? normalized : 'mid') as ComplexityTier;
+  
+  let tier: ComplexityTier;
+  if (validTiers.has(normalized)) {
+    tier = normalized as ComplexityTier;
+  } else {
+    console.warn(`ClawRouter: Unknown tier '${decision.tier}' encountered, falling back to 'mid'`);
+    tier = 'mid';
+  }
   
   // Generate reason string
   const source = isFromFallback ? 'fallback heuristic' : 'router';
   const reason = `${source} classified as ${tier} tier using ${decision.model} (confidence: ${decision.confidence.toFixed(2)})`;
   
   // Create scores object with emphasis on the selected tier
-  const scores: Record<ComplexityTier, number> = {
-    simple: tier === 'simple' ? decision.confidence : (1 - decision.confidence) / 3,
-    mid: tier === 'mid' ? decision.confidence : (1 - decision.confidence) / 3,
-    complex: tier === 'complex' ? decision.confidence : (1 - decision.confidence) / 3,
-    reasoning: tier === 'reasoning' ? decision.confidence : (1 - decision.confidence) / 3
-  };
+  let scores: Record<ComplexityTier, number>;
   
-  // Normalize scores to sum to 1
-  const totalScore = Object.values(scores).reduce((sum, score) => sum + score, 0);
-  if (totalScore > 0) {
-    for (const key in scores) {
-      scores[key as ComplexityTier] = scores[key as ComplexityTier] / totalScore;
+  // Handle edge case when confidence is 0 - distribute equally
+  if (decision.confidence === 0) {
+    // When confidence is 0, we have no preference, so distribute equally across all tiers
+    scores = { simple: 0.25, mid: 0.25, complex: 0.25, reasoning: 0.25 };
+  } else {
+    scores = {
+      simple: tier === 'simple' ? decision.confidence : (1 - decision.confidence) / 3,
+      mid: tier === 'mid' ? decision.confidence : (1 - decision.confidence) / 3,
+      complex: tier === 'complex' ? decision.confidence : (1 - decision.confidence) / 3,
+      reasoning: tier === 'reasoning' ? decision.confidence : (1 - decision.confidence) / 3
+    };
+    
+    // Normalize scores to sum to 1
+    const totalScore = Object.values(scores).reduce((sum, score) => sum + score, 0);
+    if (totalScore > 0) {
+      for (const key in scores) {
+        scores[key as ComplexityTier] = scores[key as ComplexityTier] / totalScore;
+      }
     }
   }
   

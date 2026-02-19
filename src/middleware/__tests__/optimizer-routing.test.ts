@@ -156,7 +156,7 @@ describe('Optimizer with ClawRouter Integration', () => {
       expect(result.metrics.modelDowngraded).toBe(true);
       expect(result.metrics.routingTier).toBe('simple');
       expect(result.metrics.routingConfidence).toBe(0.8);
-      expect(result.metrics.routingSavingsPercent).toBe(70); // From helper function
+      expect(result.metrics.routingSavingsPercent).toBe(91.67); // From realistic pricing calculation
     });
 
     it('should calculate combined savings correctly', async () => {
@@ -193,9 +193,9 @@ describe('Optimizer with ClawRouter Integration', () => {
       );
 
       // Windowing savings: 20% (200/1000)
-      // Routing savings: 70% (from helper function for simple tier)  
-      // Combined: 1 - (1 - 0.2) * (1 - 0.7) = 1 - 0.8 * 0.3 = 1 - 0.24 = 0.76
-      expect(result.metrics.combinedSavingsPercent).toBeCloseTo(0.76, 2);
+      // Routing savings: 91.67% (from realistic pricing for simple tier)  
+      // Combined: 1 - (1 - 0.2) * (1 - 0.9167) = 1 - 0.8 * 0.0833 = 1 - 0.0666 = 0.9334
+      expect(result.metrics.combinedSavingsPercent).toBeCloseTo(0.9334, 2);
     });
 
     it('should populate all routing metrics fields', async () => {
@@ -225,9 +225,9 @@ describe('Optimizer with ClawRouter Integration', () => {
       expect(result.metrics.modelUpgraded).toBe(false);
       expect(result.metrics.routingTier).toBe('mid');
       expect(result.metrics.routingConfidence).toBe(0.7);
-      expect(result.metrics.routingSavingsPercent).toBe(30);
-      expect(result.metrics.routingCostEstimate).toBeCloseTo(0.015, 3);
-      expect(result.metrics.combinedSavingsPercent).toBeCloseTo(0.3, 2);
+      expect(result.metrics.routingSavingsPercent).toBe(80); // Opus to Sonnet downgrade saves 80%
+      expect(result.metrics.routingCostEstimate).toBeCloseTo(0.003, 3); // Input cost per 1k for Sonnet
+      expect(result.metrics.combinedSavingsPercent).toBeCloseTo(0.8, 2); // 80% routing savings
     });
 
     it('should skip routing when confidence is below threshold', async () => {
@@ -469,7 +469,7 @@ describe('Optimizer with ClawRouter Integration', () => {
       expect(result.metrics.targetModel).toBe('anthropic/claude-opus-4-20250514');
       expect(result.metrics.modelUpgraded).toBe(true);
       expect(result.metrics.modelDowngraded).toBe(false);
-      expect(result.metrics.routingSavingsPercent).toBe(-20); // Negative savings for reasoning tasks
+      expect(result.metrics.routingSavingsPercent).toBe(-5900); // Realistic cost increase from haiku to opus
     });
   });
 
@@ -525,9 +525,9 @@ describe('Optimizer with ClawRouter Integration', () => {
       );
 
       // Windowing: 30% savings (300/1000 = 0.3)
-      // Routing: 70% savings (simple tier = 0.7)
-      // Combined: 1 - (1 - 0.3) * (1 - 0.7) = 1 - 0.7 * 0.3 = 1 - 0.21 = 0.79
-      expect(result.metrics.combinedSavingsPercent).toBeCloseTo(0.79, 2);
+      // Routing: 91.67% savings (realistic simple tier pricing)
+      // Combined: 1 - (1 - 0.3) * (1 - 0.9167) = 1 - 0.7 * 0.0833 = 1 - 0.0583 = 0.9417
+      expect(result.metrics.combinedSavingsPercent).toBeCloseTo(0.9417, 2);
     });
 
     it('should handle zero windowing savings correctly', async () => {
@@ -554,9 +554,9 @@ describe('Optimizer with ClawRouter Integration', () => {
       );
 
       // Windowing: 0% savings
-      // Routing: 30% savings (mid tier = 0.3)
-      // Combined: 1 - (1 - 0) * (1 - 0.3) = 1 - 1 * 0.7 = 0.3
-      expect(result.metrics.combinedSavingsPercent).toBeCloseTo(0.3, 2);
+      // Routing: 80% savings (realistic opus to sonnet pricing)
+      // Combined: 1 - (1 - 0) * (1 - 0.8) = 1 - 1 * 0.2 = 0.8
+      expect(result.metrics.combinedSavingsPercent).toBeCloseTo(0.8, 2);
     });
   });
 });

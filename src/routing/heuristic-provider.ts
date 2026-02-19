@@ -2,6 +2,7 @@ import { classifyComplexity, type Message } from '../classifier/classify.js';
 import { getTierModel } from './tiers.js';
 import { processOverrides, type RoutingContext } from './overrides.js';
 import type { IRoutingProvider, RoutingDecision } from './types.js';
+import { estimateCostPerToken } from './pricing.js';
 
 /**
  * Heuristic provider that wraps existing SlimClaw routing logic
@@ -73,57 +74,35 @@ export class HeuristicProvider implements IRoutingProvider {
 
   /**
    * Calculate simplified cost estimates based on tier and model
+   * Uses shared pricing from pricing.ts for consistency
    */
   private calculateCostEstimates(
-    tier: string,
+    _tier: string, // Underscore prefix to indicate intentionally unused
     contextTokens: number,
     selectedModel: string,
     originalModel?: string
   ): { costEstimate: number; savings: number } {
-    // Simplified cost model based on common pricing patterns
-    const baseCostPerToken = {
-      'simple': 0.00001,    // Haiku-like models
-      'mid': 0.00003,       // Sonnet-like models  
-      'complex': 0.0001,    // Opus-like models
-      'reasoning': 0.0001   // Reasoning models
-    };
-
-    const tierCost = baseCostPerToken[tier as keyof typeof baseCostPerToken] || baseCostPerToken.mid;
-    
     // Estimate output tokens (rough heuristic)
     const estimatedOutputTokens = Math.min(contextTokens * 0.5, 2000);
-    const totalTokens = contextTokens + estimatedOutputTokens;
     
-    const costEstimate = totalTokens * tierCost;
+    // Use shared pricing functions for consistent cost calculation
+    const selectedModelCostPerToken = estimateCostPerToken(selectedModel, 0.5); // 50% output ratio
+    const costEstimate = (contextTokens + estimatedOutputTokens) * selectedModelCostPerToken;
 
     // Calculate savings if we know the original model
     let savings = 0;
     if (originalModel && selectedModel !== originalModel) {
-      // Simple heuristic: assume original model would be more expensive
-      const originalTierCost = this.inferCostFromModel(originalModel);
-      const originalCostEstimate = totalTokens * originalTierCost;
+      const originalModelCostPerToken = estimateCostPerToken(originalModel, 0.5);
+      const originalCostEstimate = (contextTokens + estimatedOutputTokens) * originalModelCostPerToken;
       savings = Math.max(0, originalCostEstimate - costEstimate);
     }
 
     return {
-      costEstimate: Math.round(costEstimate * 10000) / 10000, // Round to 4 decimal places
-      savings: Math.round(savings * 10000) / 10000
+      // Use consistent precision: 6 decimal places for costs
+      costEstimate: Math.round(costEstimate * 1000000) / 1000000,
+      savings: Math.round(savings * 1000000) / 1000000
     };
   }
 
-  /**
-   * Infer cost per token from model name
-   */
-  private inferCostFromModel(modelName: string): number {
-    const lowerModel = modelName.toLowerCase();
-    
-    if (lowerModel.includes('haiku')) return 0.00001;
-    if (lowerModel.includes('sonnet')) return 0.00003;
-    if (lowerModel.includes('opus')) return 0.0001;
-    if (lowerModel.includes('gpt-3.5')) return 0.00002;
-    if (lowerModel.includes('gpt-4')) return 0.00008;
-    
-    // Default to mid-tier cost
-    return 0.00003;
-  }
+  // Cost calculation methods now use shared pricing from pricing.ts
 }
