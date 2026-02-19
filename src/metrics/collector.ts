@@ -3,7 +3,7 @@
  * Replaces the basic MetricsCollector from middleware/metrics.ts
  */
 
-import type { OptimizerMetrics, MetricsStats, MetricsConfig, ComplexityTier } from './types.js';
+import type { OptimizerMetrics, MetricsStats, MetricsConfig } from './types.js';
 import { createSlimClawLogger } from '../logging/index.js';
 
 export class MetricsCollector {
@@ -105,61 +105,30 @@ export class MetricsCollector {
    */
   getStats(): MetricsStats {
     const data = this.getAll();
-    
-    if (data.length === 0) {
-      return {
-        totalRequests: 0,
-        averageOriginalTokens: 0,
-        averageOptimizedTokens: 0,
-        averageTokensSaved: 0,
-        averageSavingsPercent: 0,
-        windowingUsagePercent: 0,
-        cacheUsagePercent: 0,
-        classificationDistribution: { simple: 0, mid: 0, complex: 0, reasoning: 0 },
-        routingUsagePercent: 0,
-        modelDowngradePercent: 0,
-        averageLatencyMs: 0,
-        totalCostSaved: 0,
-      };
+    if (this.reporter) {
+      return this.reporter.computeStats(data);
     }
+    return this.getEmptyStats();
+  }
 
-    const total = data.length;
-
-    // Basic token statistics
-    const avgOriginal = this.average(data.map(d => d.originalTokenEstimate));
-    const avgWindowed = this.average(data.map(d => d.windowedTokenEstimate));
-    const avgSaved = this.average(data.map(d => d.tokensSaved ?? 0));
-    const avgSavingsPercent = avgOriginal > 0 ? ((avgOriginal - avgWindowed) / avgOriginal) * 100 : 0;
-
-    // Feature usage statistics
-    const windowingUsed = data.filter(d => d.windowingApplied).length;
-    const cacheUsed = data.filter(d => d.cacheBreakpointsInjected > 0).length;
-    const routingUsed = data.filter(d => d.routingApplied).length;
-    const modelDowngraded = data.filter(d => d.modelDowngraded).length;
-
-    // Classification distribution
-    const classificationDistribution = this.countBy(data, d => d.classificationTier);
-
-    // Performance metrics
-    const latencyData = data.filter(d => d.latencyMs !== null).map(d => d.latencyMs!);
-    const avgLatency = latencyData.length > 0 ? this.average(latencyData) : 0;
-
-    // Cost savings
-    const totalCostSaved = data.reduce((sum, d) => sum + (d.estimatedCostSaved ?? 0), 0);
-
+  private getEmptyStats(): MetricsStats {
     return {
-      totalRequests: total,
-      averageOriginalTokens: Math.round(avgOriginal),
-      averageOptimizedTokens: Math.round(avgWindowed),
-      averageTokensSaved: Math.round(avgSaved),
-      averageSavingsPercent: Math.round(avgSavingsPercent * 100) / 100,
-      windowingUsagePercent: Math.round((windowingUsed / total) * 100),
-      cacheUsagePercent: Math.round((cacheUsed / total) * 100),
-      classificationDistribution,
-      routingUsagePercent: Math.round((routingUsed / total) * 100),
-      modelDowngradePercent: Math.round((modelDowngraded / total) * 100),
-      averageLatencyMs: Math.round(avgLatency),
-      totalCostSaved: Math.round(totalCostSaved * 100) / 100,
+      totalRequests: 0,
+      averageOriginalTokens: 0,
+      averageOptimizedTokens: 0,
+      averageTokensSaved: 0,
+      averageSavingsPercent: 0,
+      windowingUsagePercent: 0,
+      cacheUsagePercent: 0,
+      classificationDistribution: { simple: 0, mid: 0, complex: 0, reasoning: 0 },
+      routingUsagePercent: 0,
+      modelDowngradePercent: 0,
+      averageLatencyMs: 0,
+      totalCostSaved: 0,
+      averageRoutingSavings: 0,
+      routingTierDistribution: { simple: 0, mid: 0, complex: 0, reasoning: 0 },
+      modelUpgradePercent: 0,
+      combinedSavingsPercent: 0,
     };
   }
 
@@ -228,22 +197,4 @@ export class MetricsCollector {
     ].join("\n");
   }
 
-  /**
-   * Utility: Calculate average of array
-   */
-  private average(numbers: number[]): number {
-    return numbers.length === 0 ? 0 : numbers.reduce((a, b) => a + b, 0) / numbers.length;
-  }
-
-  /**
-   * Utility: Count occurrences by key
-   */
-  private countBy<T>(array: T[], keyFn: (item: T) => string): Record<string, number> {
-    const counts: Record<string, number> = {};
-    for (const item of array) {
-      const key = keyFn(item);
-      counts[key] = (counts[key] || 0) + 1;
-    }
-    return counts as Record<ComplexityTier, number>;
-  }
 }

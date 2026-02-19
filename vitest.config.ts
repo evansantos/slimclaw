@@ -11,7 +11,6 @@ export default defineConfig({
       'src/__tests__/integration/**',
       'src/__tests__/config.test.ts',
       'src/windowing/__tests__/**',
-      'src/middleware/__tests__/**',
       'tests/**',
     ],
     testTimeout: 10000,

@@ -38,6 +38,13 @@ export const SlimClawConfigSchema = z.object({
     }),
     /** Thinking budget for reasoning tier models */
     reasoningBudget: z.number().int().default(10000),
+    /** Custom model pricing overrides (per 1k tokens). Merges with built-in defaults.
+     *  Example: { "anthropic/claude-sonnet-4-20250514": { "inputPer1k": 0.003, "outputPer1k": 0.015 } }
+     */
+    pricing: z.record(z.object({
+      inputPer1k: z.number(),
+      outputPer1k: z.number(),
+    })).optional(),
   }).default({}),
 
   caching: z.object({

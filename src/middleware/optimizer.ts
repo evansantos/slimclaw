@@ -9,6 +9,11 @@ import { estimateTokens } from '../windowing/token-counter.js';
 import type { SlimClawConfig } from '../config.js';
 import type { OptimizerMetrics, MetricsCollector } from '../metrics/index.js';
 import { createRequestLogger } from '../logging/index.js';
+import { classifyWithRouter } from '../classifier/clawrouter-classifier.js';
+import { classifyComplexity } from '../classifier/index.js';
+import type { ComplexityTier } from '../metrics/types.js';
+import { TIER_ORDER } from '../routing/constants.js';
+import { calculateRoutingSavings, estimateModelCost, DEFAULT_MODEL_PRICING } from '../routing/pricing.js';
 
 export interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -88,6 +93,16 @@ export async function inferenceOptimizer(
     let summaryTokens = 0;
     let cacheBreakpointsInjected = 0;
     let summarizationMethod: "none" | "heuristic" | "llm" = "none";
+    
+    // Routing variables
+    let routingApplied = false;
+    let targetModel = context.originalModel || null;
+    let modelDowngraded = false;
+    let modelUpgraded = false;
+    let routingTier: ComplexityTier | undefined;
+    let routingConfidence: number | undefined;
+    let routingSavingsPercent: number | undefined;
+    let routingCostEstimate: number | undefined;
 
     // Step 1: Windowing (se habilitado)
     if (config.windowing.enabled) {
@@ -127,6 +142,85 @@ export async function inferenceOptimizer(
       logger.debug('Windowing disabled');
     }
 
+    // Step 1.5: Routing (se habilitado)
+    let classificationResult;
+    try {
+      if (config.routing.enabled) {
+        logger.debug('Starting routing step');
+        if (!context.originalModel) {
+          logger.warn('Routing with undefined originalModel — router will handle fallback');
+        }
+        classificationResult = classifyWithRouter(optimizedMessages, { originalModel: context.originalModel });
+        
+        // Extract routing data from classification result
+        routingTier = classificationResult.tier;
+        routingConfidence = classificationResult.confidence;
+        
+        // Determine target model based on classification
+        const tierModel = config.routing.tiers[classificationResult.tier];
+        if (tierModel && tierModel !== context.originalModel) {
+          
+          // Check if original model is pinned (should not be routed)
+          const isPinned = context.originalModel ? config.routing.pinnedModels.includes(context.originalModel) : false;
+          
+          // Only apply routing if confidence meets threshold and model isn't pinned
+          if (classificationResult.confidence >= config.routing.minConfidence && !isPinned) {
+            targetModel = tierModel;
+            routingApplied = true;
+            
+            // Determine if it's an upgrade or downgrade using shared tier order
+            const originalTier = getModelTier(context.originalModel ?? 'anthropic/claude-sonnet-4-20250514', config.routing.tiers);
+            const newTier = classificationResult.tier;
+            
+            if (isModelDowngrade(originalTier, newTier)) {
+              modelDowngraded = true;
+            } else if (isModelUpgrade(originalTier, newTier)) {
+              modelUpgraded = true;
+            }
+            
+            // Calculate estimated savings using shared pricing functions
+            // Merge user-configured pricing with defaults (user overrides win)
+            const pricing = { ...DEFAULT_MODEL_PRICING, ...(config.routing.pricing ?? {}) };
+            routingSavingsPercent = calculateRoutingSavings(context.originalModel ?? 'anthropic/claude-sonnet-4-20250514', classificationResult.tier, pricing);
+            routingCostEstimate = estimateModelCost(tierModel, originalTokens, 0, pricing);
+
+            logger.info('Routing applied', {
+              originalModel: context.originalModel,
+              targetModel,
+              tier: classificationResult.tier,
+              confidence: classificationResult.confidence,
+              downgraded: modelDowngraded,
+              upgraded: modelUpgraded,
+              savingsPercent: routingSavingsPercent,
+            });
+          } else {
+            logger.debug('Routing skipped', {
+              reason: isPinned ? 'model_pinned' : 'low_confidence',
+              confidence: classificationResult.confidence,
+              threshold: config.routing.minConfidence,
+            });
+          }
+        } else {
+          logger.debug('Routing skipped - no tier model change needed', {
+            currentModel: context.originalModel,
+            suggestedTier: classificationResult.tier,
+            tierModel,
+          });
+        }
+      } else {
+        // Routing disabled - use fallback heuristic classifier
+        logger.debug('Routing disabled - using heuristic classification');
+        classificationResult = classifyComplexity(optimizedMessages);
+      }
+    } catch (error) {
+      // Graceful degradation - if routing fails, continue with windowing/cache only
+      logger.warn('Routing failed, falling back to heuristic classification', { 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      classificationResult = classifyComplexity(optimizedMessages);
+    }
+
     // Step 2: Cache injection (se habilitado)
     if (config.caching.enabled) {
       logger.debug('Starting cache injection step', {
@@ -163,6 +257,13 @@ export async function inferenceOptimizer(
     const optimizedTokens = estimateTokens(optimizedMessages);
     const tokensSaved = originalTokens - optimizedTokens;
     
+    // Calculate windowing savings percentage
+    const windowingSavings = originalTokens > 0 ? tokensSaved / originalTokens : 0;
+    const routingSavings = (routingSavingsPercent ?? 0) / 100; // Convert to 0-1 fraction
+    
+    // Calculate combined savings using the specified formula
+    const combinedSavingsPercent = 1 - (1 - windowingSavings) * (1 - routingSavings);
+    
     // Create complete metrics object
     const metrics: OptimizerMetrics = {
       requestId: context.requestId,
@@ -172,7 +273,7 @@ export async function inferenceOptimizer(
       mode: context.mode ?? "active",
       
       // Input state
-      originalModel: context.originalModel ?? "unknown",
+      originalModel: context.originalModel || null,
       originalMessageCount: messages.length,
       originalTokenEstimate: originalTokens,
       
@@ -184,18 +285,18 @@ export async function inferenceOptimizer(
       summaryTokens,
       summarizationMethod,
       
-      // Classification (defaults - would be filled by classifier integration)
-      // Note: Currently defaults to "complex" until classifier service is integrated
-      classificationTier: "complex",
-      classificationConfidence: 0,
-      classificationScores: { simple: 0, mid: 0, complex: 1, reasoning: 0 },
-      classificationSignals: [],
+      // Classification (from classifier result)
+      classificationTier: classificationResult?.tier ?? "complex",
+      classificationConfidence: classificationResult?.confidence ?? 0,
+      classificationScores: classificationResult?.scores ?? { simple: 0, mid: 0, complex: 1, reasoning: 0 },
+      classificationSignals: classificationResult?.signals ?? [],
       
-      // Routing (defaults - would be filled by router)
-      routingApplied: false,
-      targetModel: context.originalModel ?? "unknown",
-      modelDowngraded: false,
-      modelUpgraded: false,
+      // Routing results
+      routingApplied,
+      targetModel,
+      modelDowngraded,
+      modelUpgraded,
+      combinedSavingsPercent,
       
       // Cache results
       cacheBreakpointsInjected,
@@ -215,6 +316,20 @@ export async function inferenceOptimizer(
       estimatedCostSaved: null,
     };
 
+    // Add optional routing properties if they exist
+    if (routingTier !== undefined) {
+      metrics.routingTier = routingTier;
+    }
+    if (routingConfidence !== undefined) {
+      metrics.routingConfidence = routingConfidence;
+    }
+    if (routingSavingsPercent !== undefined) {
+      metrics.routingSavingsPercent = routingSavingsPercent;
+    }
+    if (routingCostEstimate !== undefined) {
+      metrics.routingCostEstimate = routingCostEstimate;
+    }
+
     // Record metrics if collector provided
     if (collector) {
       collector.record(metrics);
@@ -226,17 +341,24 @@ export async function inferenceOptimizer(
       windowing: windowingApplied,
       trimmed: trimmedMessages,
       tokensSaved,
-      cache_breakpoints: cacheBreakpointsInjected,
-      original_tokens: originalTokens,
-      optimized_tokens: optimizedTokens,
-      summarization_method: summarizationMethod,
+      cacheBreakpoints: cacheBreakpointsInjected,
+      originalTokens: originalTokens,
+      optimizedTokens: optimizedTokens,
+      summarizationMethod: summarizationMethod,
+      routingApplied: routingApplied,
+      targetModel: targetModel,
+      routingTier: routingTier,
+      routingConfidence: routingConfidence,
+      combinedSavingsPercent: combinedSavingsPercent,
     });
 
     logger.info('Optimization completed', {
       windowingApplied,
+      routingApplied,
       cacheBreakpointsInjected,
       tokensSaved,
-      savingsPercent: originalTokens > 0 ? ((tokensSaved / originalTokens) * 100).toFixed(1) : '0',
+      windowingSavingsPercent: originalTokens > 0 ? ((tokensSaved / originalTokens) * 100).toFixed(1) : '0',
+      combinedSavingsPercent: (combinedSavingsPercent * 100).toFixed(1),
       latencyMs: Date.now() - startTime,
     });
 
@@ -251,6 +373,36 @@ export async function inferenceOptimizer(
     return createPassthroughResult(messages, context, logger);
   }
 }
+
+/**
+ * Helper function to get model tier from routing tiers config
+ */
+function getModelTier(model: string, tiers: Record<string, string>): ComplexityTier | null {
+  for (const [tier, tierModel] of Object.entries(tiers)) {
+    if (tierModel === model) {
+      return tier as ComplexityTier;
+    }
+  }
+  return null;
+}
+
+/**
+ * Helper function to check if routing represents a model downgrade
+ */
+function isModelDowngrade(originalTier: ComplexityTier | null, newTier: ComplexityTier): boolean {
+  if (!originalTier) return false;
+  return TIER_ORDER[newTier] < TIER_ORDER[originalTier];
+}
+
+/**
+ * Helper function to check if routing represents a model upgrade
+ */
+function isModelUpgrade(originalTier: ComplexityTier | null, newTier: ComplexityTier): boolean {
+  if (!originalTier) return false;
+  return TIER_ORDER[newTier] > TIER_ORDER[originalTier];
+}
+
+// Pricing functions now imported from ../routing/pricing.js
 
 /**
  * Cria resultado de passthrough (sem otimização)
@@ -276,7 +428,7 @@ function createPassthroughResult(
     sessionKey: context.sessionKey,
     mode: context.mode ?? "active",
     
-    originalModel: context.originalModel ?? "unknown",
+    originalModel: context.originalModel ?? null,
     originalMessageCount: messages.length,
     originalTokenEstimate: tokens,
     
@@ -293,9 +445,10 @@ function createPassthroughResult(
     classificationSignals: [],
     
     routingApplied: false,
-    targetModel: context.originalModel ?? "unknown",
+    targetModel: context.originalModel ?? null,
     modelDowngraded: false,
     modelUpgraded: false,
+    combinedSavingsPercent: 0,
     
     cacheBreakpointsInjected: 0,
     
@@ -344,10 +497,6 @@ export function generateDebugHeaders(
     headers['X-SlimClaw-Caching'] = result.metrics.cacheBreakpointsInjected > 0 ? 'applied' : 'skipped';
     headers['X-SlimClaw-Classification'] = result.metrics.classificationTier;
     headers['X-SlimClaw-Routing'] = result.metrics.routingApplied ? 'applied' : 'skipped';
-    
-    if (result.metrics.trimmedMessages > 0) {
-      headers['X-SlimClaw-Trimmed-Messages'] = result.metrics.trimmedMessages.toString();
-    }
     
     if (result.metrics.trimmedMessages > 0) {
       headers['X-SlimClaw-Trimmed-Messages'] = result.metrics.trimmedMessages.toString();

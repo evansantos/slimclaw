@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MetricsCollector } from '../../metrics/collector.js';
+import { MetricsReporter } from '../../metrics/reporter.js';
 import { setupRoutes } from '../routes.js';
 import type { MetricsConfig, OptimizerMetrics } from '../../metrics/types.js';
 
@@ -56,7 +57,8 @@ describe('Dashboard Routes', () => {
       logDir: 'metrics'
     };
     
-    collector = new MetricsCollector(config);
+    const reporter = new MetricsReporter(config);
+    collector = new MetricsCollector(config, reporter);
     routes = setupRoutes(collector);
     
     // Add some test data

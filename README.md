@@ -75,9 +75,97 @@ SlimClaw hooks into OpenClaw's LLM request/response cycle:
 
 The savings percentage shows how much you're benefiting from Anthropic's prompt caching.
 
+## ClawRouter Integration
+
+SlimClaw integrates with [ClawRouter](https://github.com/BlockRunAI/clawrouter) for intelligent model routing via a hybrid approach: ClawRouter as primary classifier with a built-in heuristic fallback.
+
+### Features
+
+- **Hybrid Routing** — ClawRouter primary classification with heuristic fallback for reliability
+- **Circuit Breaker Behavior** — Graceful fallback to original model on classification failures
+- **Combined Savings** — Windowing optimizations plus intelligent routing reduce costs by 30-60%
+
+### Model Tier Mapping
+
+| Complexity | Model | Use Cases |
+|------------|-------|-----------|
+| `simple` | Claude 3 Haiku | Basic Q&A, simple tasks, casual chat |
+| `mid` | Claude 4 Sonnet | General development, analysis, writing |
+| `complex` | Claude 4 Opus | Architecture, complex debugging, research |
+| `reasoning` | Claude 4 Opus | Multi-step logic, planning, deep analysis |
+
+### Configuration
+
+Add routing config to `slimclaw.config.json` (see [Configuration](#configuration) for full options):
+
+```json
+{
+  "enabled": true,
+  "routing": {
+    "enabled": true,
+    "allowDowngrade": true,
+    "minConfidence": 0.4,
+    "pinnedModels": ["anthropic/claude-opus-4-20250514"],
+    "tiers": {
+      "simple": "anthropic/claude-3-haiku-20240307",
+      "mid": "anthropic/claude-sonnet-4-20250514",
+      "complex": "anthropic/claude-opus-4-20250514",
+      "reasoning": "anthropic/claude-opus-4-20250514"
+    },
+    "reasoningBudget": 10000
+  }
+}
+```
+
+### API Usage
+
+The routing system implements the `IRoutingProvider` interface:
+
+```typescript
+import { HybridRouter } from 'slimclaw/routing/hybrid-router';
+import { ClawRouterAdapter } from 'slimclaw/routing/clawrouter-adapter';
+import { HeuristicProvider } from 'slimclaw/routing/heuristic-provider';
+
+// Create hybrid router (ClawRouter primary, heuristic fallback)
+const router = new HybridRouter(
+  new ClawRouterAdapter(),
+  new HeuristicProvider()
+);
+
+// Get routing decision
+const decision = router.route('Explain quantum computing', 5000);
+console.log(`Model: ${decision.model}, Tier: ${decision.tier}`);
+console.log(`Confidence: ${decision.confidence}, Savings: ${decision.savings}%`);
+```
+
+### Routing Behavior
+
+1. **Classification** — Messages analyzed by ClawRouter (or heuristic fallback) to determine complexity tier
+2. **Confidence Check** — Low confidence (< 0.4) keeps original model
+3. **Override Processing** — Headers, pinned models, and config overrides respected
+4. **Model Selection** — Tier mapped to configured model with downgrade protection
+5. **Fallback** — Errors gracefully fall back to original model
+
+### Custom Pricing
+
+Override default model pricing in `slimclaw.config.json` to keep costs accurate as providers update rates:
+
+```json
+{
+  "routing": {
+    "enabled": true,
+    "pricing": {
+      "anthropic/claude-sonnet-4-20250514": { "inputPer1k": 0.003, "outputPer1k": 0.015 },
+      "anthropic/claude-3-haiku-20240307": { "inputPer1k": 0.00025, "outputPer1k": 0.00125 }
+    }
+  }
+}
+```
+
+> **Note:** `@blockrun/clawrouter` pulls `viem` as a transitive dependency (~50 packages). This doesn't affect functionality but adds to `node_modules` size. See [BlockRunAI/clawrouter#1](https://github.com/BlockRunAI/clawrouter/issues/1) for tracking.
+
 ## Coming Soon
 
-- **ClawRouter Integration** — Use ClawRouter's 15-dimension scorer for model routing
 - **Active Mode** — Actually apply optimizations (pending OpenClaw hook mutation support)
 
 ## License

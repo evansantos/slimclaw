@@ -10,6 +10,7 @@
         body { background: #0f172a; }
         .card { background: #1e293b; border: 1px solid #334155; }
         .glow { box-shadow: 0 0 20px rgba(16, 185, 129, 0.1); }
+        .glow-border { border: 2px solid #10b981; }
     </style>
 </head>
 <body class="text-gray-100 min-h-screen p-6">
@@ -44,6 +45,73 @@
             <div class="card rounded-lg p-4 glow">
                 <p class="text-gray-400 text-sm">Cost Saved</p>
                 <p id="cost" class="text-2xl font-bold text-yellow-400">$0.00</p>
+            </div>
+        </div>
+
+        <!-- Routing Section -->
+        <div class="mb-8">
+            <h2 class="text-xl font-bold text-gray-300 mb-4">🔀 Routing Optimization</h2>
+            
+            <div id="routing-no-data" class="card rounded-lg p-8 text-center text-gray-500 mb-8">
+                <div class="text-4xl mb-2">🔄</div>
+                <p class="text-lg">No routing data yet</p>
+                <p class="text-sm">Make some requests to see routing optimizations</p>
+            </div>
+
+            <div id="routing-content" class="hidden">
+                <!-- Combined Savings - Prominent Card -->
+                <div class="card rounded-lg p-6 mb-6 glow glow-border">
+                    <div class="text-center">
+                        <p class="text-gray-400 text-sm uppercase tracking-wide">Total Combined Savings</p>
+                        <p id="combined-savings" class="text-4xl font-bold text-emerald-400 mt-2">0%</p>
+                        <p class="text-xs text-gray-500 mt-1">Windowing + Caching + Routing</p>
+                    </div>
+                </div>
+
+                <!-- Routing Metrics Grid -->
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                    <div class="card rounded-lg p-4 glow">
+                        <p class="text-gray-400 text-sm">Routing Usage</p>
+                        <p id="routing-usage" class="text-2xl font-bold text-purple-400">0%</p>
+                        <p id="routing-count" class="text-xs text-gray-500">0 requests</p>
+                    </div>
+                    <div class="card rounded-lg p-4 glow">
+                        <p class="text-gray-400 text-sm">Avg Routing Savings</p>
+                        <p id="routing-savings" class="text-2xl font-bold text-blue-400">0%</p>
+                    </div>
+                    <div class="card rounded-lg p-4 glow">
+                        <p class="text-gray-400 text-sm">Model Routing</p>
+                        <p id="model-direction" class="text-lg font-bold text-gray-300">--</p>
+                        <p id="model-stats" class="text-xs text-gray-500">0% ↓ / 0% ↑</p>
+                    </div>
+                </div>
+
+                <!-- Tier Distribution -->
+                <div class="card rounded-lg p-6">
+                    <h3 class="text-md font-semibold text-gray-300 mb-4">Routing Complexity Distribution</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="text-center">
+                            <div class="text-2xl mb-1">🟢</div>
+                            <div id="tier-simple" class="text-lg font-bold text-green-400">0%</div>
+                            <div class="text-xs text-gray-500">Simple</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl mb-1">🟡</div>
+                            <div id="tier-mid" class="text-lg font-bold text-yellow-400">0%</div>
+                            <div class="text-xs text-gray-500">Mid</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl mb-1">🟠</div>
+                            <div id="tier-complex" class="text-lg font-bold text-orange-400">0%</div>
+                            <div class="text-xs text-gray-500">Complex</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl mb-1">🔴</div>
+                            <div id="tier-reasoning" class="text-lg font-bold text-red-400">0%</div>
+                            <div class="text-xs text-gray-500">Reasoning</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -99,8 +167,63 @@
                     document.getElementById('no-data').classList.remove('hidden');
                     document.getElementById('chart').classList.add('hidden');
                 }
+
+                // Load routing data
+                await loadRoutingData();
             } catch (e) {
                 console.error('Failed to load:', e);
+            }
+        }
+
+        async function loadRoutingData() {
+            try {
+                const res = await fetch('/api/routing-stats');
+                const data = await res.json();
+                
+                if (data.hasData && data.routingRequests > 0) {
+                    // Show routing content
+                    document.getElementById('routing-no-data').classList.add('hidden');
+                    document.getElementById('routing-content').classList.remove('hidden');
+                    
+                    // Update combined savings (most prominent)
+                    document.getElementById('combined-savings').textContent = `${data.combinedSavings.toFixed(1)}%`;
+                    
+                    // Update routing metrics
+                    document.getElementById('routing-usage').textContent = `${data.routingUsage.toFixed(1)}%`;
+                    document.getElementById('routing-count').textContent = `${data.routingRequests} requests`;
+                    document.getElementById('routing-savings').textContent = `${data.averageRoutingSavings.toFixed(1)}%`;
+                    
+                    // Update model direction indicator
+                    const downgradePercent = data.modelDowngrade;
+                    const upgradePercent = data.modelUpgrade;
+                    
+                    let direction = '--';
+                    if (downgradePercent > upgradePercent) {
+                        direction = 'Mostly ↓';
+                    } else if (upgradePercent > downgradePercent) {
+                        direction = 'Mostly ↑';
+                    } else if (downgradePercent > 0 || upgradePercent > 0) {
+                        direction = 'Mixed';
+                    }
+                    
+                    document.getElementById('model-direction').textContent = direction;
+                    document.getElementById('model-stats').textContent = `${downgradePercent.toFixed(0)}% ↓ / ${upgradePercent.toFixed(0)}% ↑`;
+                    
+                    // Update tier distribution
+                    document.getElementById('tier-simple').textContent = `${data.tierDistribution.simple}%`;
+                    document.getElementById('tier-mid').textContent = `${data.tierDistribution.mid}%`;
+                    document.getElementById('tier-complex').textContent = `${data.tierDistribution.complex}%`;
+                    document.getElementById('tier-reasoning').textContent = `${data.tierDistribution.reasoning}%`;
+                } else {
+                    // Show no data message
+                    document.getElementById('routing-no-data').classList.remove('hidden');
+                    document.getElementById('routing-content').classList.add('hidden');
+                }
+            } catch (e) {
+                console.error('Failed to load routing data:', e);
+                // Show no data message on error
+                document.getElementById('routing-no-data').classList.remove('hidden');
+                document.getElementById('routing-content').classList.add('hidden');
             }
         }
 

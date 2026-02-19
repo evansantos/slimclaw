@@ -35,6 +35,8 @@ Shows current metrics:
 - Cache reads/writes  
 - Cache hit rate (%)
 - Estimated token savings
+- Routing decisions and tier distribution
+- Model downgrade percentage
 
 Example output:
 ```
@@ -88,7 +90,13 @@ Create `~/.openclaw/plugins/slimclaw/slimclaw.config.json`:
 | `windowing.enabled` | `true` | Enable context windowing |
 | `windowing.maxTokens` | `100000` | Max tokens before windowing |
 | `cache.enabled` | `true` | Enable cache breakpoint injection |
-| `routing.enabled` | `true` | Enable model routing (shadow mode) |
+| `routing.enabled` | `false` | Enable ClawRouter model routing |
+| `routing.allowDowngrade` | `true` | Allow routing to cheaper models |
+| `routing.minConfidence` | `0.4` | Min confidence for routing decisions |
+| `routing.pinnedModels` | `[]` | Models exempt from routing |
+| `routing.tiers.*` | `haiku/sonnet/opus` | Model mapping by complexity tier |
+| `routing.reasoningBudget` | `10000` | Thinking token budget for reasoning |
+| `routing.pricing` | `undefined` | Custom model pricing overrides (per 1k tokens) |
 
 ## Dashboard
 
@@ -108,6 +116,7 @@ Features:
 | `GET /` | Dashboard HTML |
 | `GET /api/metrics` | Current metrics JSON |
 | `GET /api/stats` | Aggregated statistics |
+| `GET /api/routing-stats` | Routing metrics and tier distribution |
 | `GET /health` | Health check |
 
 ## Troubleshooting
@@ -156,6 +165,61 @@ npm run dev
 # Build
 npm run build
 ```
+
+## Migration: Heuristic to Hybrid ClawRouter
+
+SlimClaw now uses **hybrid routing** combining ClawRouter as primary classifier with heuristic fallback:
+
+### What Changed
+
+**Before** (Pure Heuristic):
+- Simple keyword matching
+- Basic message length thresholds
+- Limited accuracy on edge cases
+
+**After** (Hybrid ClawRouter):
+- ClawRouter complexity scoring (primary)
+- Heuristic fallback with circuit breaker
+- Code pattern recognition
+- Reasoning complexity detection
+- Graceful fallback to heuristics
+
+### Configuration Migration
+
+Update your config to enable routing:
+
+```json
+{
+  "routing": {
+    "enabled": true,
+    "minConfidence": 0.4,
+    "allowDowngrade": true
+  }
+}
+```
+
+### Custom Pricing
+
+Override built-in model pricing to keep cost estimates accurate:
+
+```json
+{
+  "routing": {
+    "enabled": true,
+    "pricing": {
+      "anthropic/claude-sonnet-4-20250514": { "inputPer1k": 0.003, "outputPer1k": 0.015 }
+    }
+  }
+}
+```
+
+Custom pricing merges with defaults — only override what changed.
+
+### Backward Compatibility
+
+- All existing configs continue working
+- `routing.enabled: false` preserves old behavior
+- No breaking changes to API or commands
 
 ## Current Limitations
 

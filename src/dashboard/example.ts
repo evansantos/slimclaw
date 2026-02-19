@@ -16,7 +16,8 @@ async function setupDashboardExample() {
     enabled: true,
     flushInterval: 50, // Flush every 50 requests
     ringBufferSize: 1000, // Keep last 1000 requests in memory
-    logDir: 'metrics' // Store in ~/.openclaw/data/slimclaw/metrics/
+    logDir: 'metrics', // Store in ~/.openclaw/data/slimclaw/metrics/
+    trackRouting: true // Enable routing metrics tracking
   };
 
   // 2. Create metrics collector and reporter
@@ -138,7 +139,7 @@ async function addSampleData(collector: MetricsCollector) {
       agentId: sample.agentId,
       sessionKey: sample.sessionKey,
       mode: 'active',
-      originalModel: 'claude-3-sonnet',
+      originalModel: 'anthropic/claude-sonnet-4-20250514',
       originalMessageCount: Math.floor(sample.originalTokens / 400), // Rough estimate
       originalTokenEstimate: sample.originalTokens,
       windowingApplied: sample.windowingApplied,
@@ -157,9 +158,14 @@ async function addSampleData(collector: MetricsCollector) {
       },
       classificationSignals: ['demo_signal'],
       routingApplied: sample.classificationTier !== 'simple',
-      targetModel: sample.classificationTier === 'simple' ? 'claude-3-haiku' : 'claude-3-sonnet',
+      targetModel: sample.classificationTier === 'simple' ? 'anthropic/claude-3-haiku-20240307' : 'anthropic/claude-sonnet-4-20250514',
       modelDowngraded: sample.classificationTier === 'simple',
       modelUpgraded: false,
+      routingTier: sample.classificationTier,
+      routingConfidence: 0.8,
+      routingSavingsPercent: sample.classificationTier === 'simple' ? 50 : 20,
+      routingCostEstimate: sample.optimizedTokens * 0.000001,
+      combinedSavingsPercent: ((sample.originalTokens - sample.optimizedTokens) / sample.originalTokens) * 100,
       cacheBreakpointsInjected: sample.cacheBreakpoints,
       actualInputTokens: sample.optimizedTokens,
       actualOutputTokens: Math.floor(sample.optimizedTokens * 0.2), // 20% output

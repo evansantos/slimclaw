@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DashboardServer, startDashboard } from '../server.js';
 import { MetricsCollector } from '../../metrics/collector.js';
+import { MetricsReporter } from '../../metrics/reporter.js';
 import type { MetricsConfig, DashboardConfig } from '../../metrics/types.js';
 
 describe('DashboardServer', () => {
@@ -26,7 +27,8 @@ describe('DashboardServer', () => {
       logDir: 'metrics'
     };
     
-    collector = new MetricsCollector(metricsConfig);
+    const reporter = new MetricsReporter(metricsConfig);
+    collector = new MetricsCollector(metricsConfig, reporter);
   });
 
   afterEach(async () => {
