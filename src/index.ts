@@ -208,9 +208,13 @@ class SlimClawMetricsAdapter implements Pick<MetricsCollector, 'getAll' | 'getRe
     summarizationMethod: 'none' as const,
     classificationTier: request.routingTier ?? 'complex',
     classificationConfidence: request.routingConfidence ?? 1,
-    classificationScores: { simple: 0, mid: 0, complex: 1, reasoning: 0 },
+    classificationScores: request.routingTier 
+      ? { simple: 0, mid: 0, complex: 0, reasoning: 0, [request.routingTier]: request.routingConfidence ?? 1 }
+      : { simple: 0, mid: 0, complex: 1, reasoning: 0 },
     classificationSignals: request.routingSignals || [],
     routingApplied: !!request.routingTier,
+    ...(request.routingTier ? { routingTier: request.routingTier } : {}),
+    ...(request.routingConfidence != null ? { routingConfidence: request.routingConfidence } : {}),
     targetModel: request.routingModel || request.model,
     modelDowngraded: !!(request.routingModel && request.routingModel !== request.model),
     modelUpgraded: false,
