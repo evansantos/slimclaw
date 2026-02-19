@@ -8,6 +8,8 @@
  */
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import { classifyWithRouter } from './classifier/clawrouter-classifier.js';
+import type { Message } from './classifier/classify.js';
 
 // Dashboard exports
 export { 
@@ -77,6 +79,10 @@ interface RequestMetric {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   savingsPercent: number;
+  routingTier?: string | undefined;
+  routingConfidence?: number | undefined;
+  routingModel?: string | undefined;
+  routingSignals?: string[] | undefined;
 }
 
 // Global metrics store
@@ -147,12 +153,22 @@ class SlimClawMetricsAdapter implements Pick<MetricsCollector, 'getAll' | 'getRe
       windowingUsagePercent: 0, // We don't track windowing in simple metrics
       cacheUsagePercent: Math.round(cacheUsagePercent),
       classificationDistribution: { simple: 0, mid: 0, complex: totalRequests, reasoning: 0 },
-      routingUsagePercent: 0, // We don't track routing in simple metrics
-      modelDowngradePercent: 0,
-      averageLatencyMs: 0, // We don't track latency in simple metrics
+      routingUsagePercent: totalRequests > 0 
+        ? (metrics.requestHistory.filter(r => r.routingTier).length / totalRequests) * 100 : 0,
+      modelDowngradePercent: totalRequests > 0
+        ? (metrics.requestHistory.filter(r => r.routingTier && r.routingModel && r.routingModel !== r.model).length / totalRequests) * 100 : 0,
+      averageLatencyMs: 0,
       totalCostSaved: Math.round(totalCostSaved * 100) / 100,
-      averageRoutingSavings: 0, // We don't track routing in simple metrics
-      routingTierDistribution: { simple: 0, mid: 0, complex: 0, reasoning: 0 },
+      averageRoutingSavings: 0,
+      routingTierDistribution: (() => {
+        const dist = { simple: 0, mid: 0, complex: 0, reasoning: 0 };
+        for (const r of metrics.requestHistory) {
+          if (r.routingTier && r.routingTier in dist) {
+            dist[r.routingTier as keyof typeof dist]++;
+          }
+        }
+        return dist;
+      })(),
       modelUpgradePercent: 0,
       combinedSavingsPercent: 0,
     };
@@ -189,13 +205,13 @@ class SlimClawMetricsAdapter implements Pick<MetricsCollector, 'getAll' | 'getRe
     trimmedMessages: 0,
     summaryTokens: 0,
     summarizationMethod: 'none' as const,
-    classificationTier: 'complex' as const,
-    classificationConfidence: 1,
+    classificationTier: (request.routingTier as any) || 'complex',
+    classificationConfidence: request.routingConfidence ?? 1,
     classificationScores: { simple: 0, mid: 0, complex: 1, reasoning: 0 },
-    classificationSignals: [],
-    routingApplied: false,
-    targetModel: request.model,
-    modelDowngraded: false,
+    classificationSignals: request.routingSignals || [],
+    routingApplied: !!request.routingTier,
+    targetModel: request.routingModel || request.model,
+    modelDowngraded: !!(request.routingModel && request.routingModel !== request.model),
     modelUpgraded: false,
     cacheBreakpointsInjected: request.cacheReadTokens > 0 ? 1 : 0,
     actualInputTokens: request.inputTokens,
@@ -214,13 +230,14 @@ class SlimClawMetricsAdapter implements Pick<MetricsCollector, 'getAll' | 'getRe
 const metricsAdapter = new SlimClawMetricsAdapter();
 
 // Pending requests for correlation
-const pendingRequests = new Map<string, { inputTokens: number; timestamp: number }>();
+const pendingRequests = new Map<string, { inputTokens: number; timestamp: number; routing?: { tier: string; confidence: number; model: string; signals: string[] } | null }>();
 
 // Plugin config (loaded at register)
 let pluginConfig = {
   enabled: true,
   metrics: { enabled: true, logLevel: 'summary' },
   cacheBreakpoints: { enabled: true, minContentLength: 1000, provider: 'anthropic' },
+  routing: { enabled: false, tiers: {} as Record<string, string>, minConfidence: 0.4, pinnedModels: [] as string[] },
   dashboard: { enabled: false, port: 3333 },
 };
 
@@ -267,11 +284,21 @@ const slimclawPlugin = {
         minContentLength: (rawConfig.cacheBreakpoints as any)?.minContentLength || 1000,
         provider: (rawConfig.cacheBreakpoints as any)?.provider || 'anthropic',
       },
+      routing: {
+        enabled: (rawConfig.routing as any)?.enabled || false,
+        tiers: (rawConfig.routing as any)?.tiers || {},
+        minConfidence: (rawConfig.routing as any)?.minConfidence || 0.4,
+        pinnedModels: (rawConfig.routing as any)?.pinnedModels || [],
+      },
       dashboard: {
         enabled: (rawConfig.dashboard as any)?.enabled || false,
         port: (rawConfig.dashboard as any)?.port || 3333,
       },
     };
+
+    if (pluginConfig.routing.enabled) {
+      api.logger.info(`SlimClaw routing enabled (observation mode) - tiers: ${JSON.stringify(pluginConfig.routing.tiers)}`);
+    }
 
     api.logger.info(`SlimClaw registered - metrics: ${pluginConfig.metrics.enabled}, cache: ${pluginConfig.cacheBreakpoints.enabled}`);
 
@@ -305,9 +332,42 @@ const slimclawPlugin = {
         const estimatedTokens = estimateTokens(String(totalChars));
         api.logger.info(`[SlimClaw] llm_input: totalChars=${totalChars}, estimatedTokens=${estimatedTokens}`);
         
+        // Routing classification (observation mode — classify but don't mutate model)
+        let routingResult: { tier: string; confidence: number; model: string; signals: string[] } | null = null;
+        if (pluginConfig.routing.enabled) {
+          try {
+            const messages: Message[] = ((historyMessages as any[]) || []).map((msg: any) => ({
+              role: msg.role || 'user',
+              content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
+            }));
+            // Add current prompt as last message
+            if (prompt) {
+              messages.push({ role: 'user', content: prompt });
+            }
+            
+            const classification = classifyWithRouter(messages, { originalModel: (event as any).model });
+            const tierModel = pluginConfig.routing.tiers[classification.tier];
+            routingResult = {
+              tier: classification.tier,
+              confidence: classification.confidence,
+              model: tierModel || 'unknown',
+              signals: classification.signals,
+            };
+            
+            api.logger.info(
+              `[SlimClaw] 🔀 Routing recommendation: ${classification.tier} tier ` +
+              `(confidence: ${classification.confidence.toFixed(2)}) → ${tierModel || 'no tier model'} | ` +
+              `signals: [${classification.signals.join(', ')}]`
+            );
+          } catch (err) {
+            api.logger.info(`[SlimClaw] Routing classification failed: ${err}`);
+          }
+        }
+
         pendingRequests.set(runId, {
           inputTokens: estimatedTokens,
           timestamp: Date.now(),
+          routing: routingResult,
         });
         api.logger.info(`[SlimClaw] llm_input: STORED runId=${runId}, mapSize=${pendingRequests.size}`);
       } catch (err) {
@@ -368,6 +428,10 @@ const slimclawPlugin = {
         cacheReadTokens,
         cacheWriteTokens,
         savingsPercent,
+        routingTier: pending.routing?.tier,
+        routingConfidence: pending.routing?.confidence,
+        routingModel: pending.routing?.model,
+        routingSignals: pending.routing?.signals,
       });
 
       if (metrics.requestHistory.length > 100) {
