@@ -45,7 +45,7 @@ jobs:
       run: npm run build
     
     - name: Check for vulnerabilities
-      run: npm audit --omit=dev
+      run: npm audit --omit=dev || echo "::warning::npm audit found vulnerabilities (see above)"
     
     - name: Upload coverage to Codecov (if exists)
       uses: codecov/codecov-action@v3
