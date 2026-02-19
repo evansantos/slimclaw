@@ -280,7 +280,7 @@ export async function inferenceOptimizer(
       mode: context.mode ?? "active",
       
       // Input state
-      originalModel: context.originalModel ?? "unknown",
+      originalModel: context.originalModel || null,
       originalMessageCount: messages.length,
       originalTokenEstimate: originalTokens,
       

@@ -73,7 +73,8 @@ export class HybridRouter implements IRoutingProvider {
       if (primaryDecision) {
         return primaryDecision;
       }
-      throw new Error('No providers available');
+      // Reachable when: primary was skipped (circuit open) AND fallback unavailable
+      throw new Error('No routing providers available: primary circuit open, fallback unavailable');
     }
 
     try {
