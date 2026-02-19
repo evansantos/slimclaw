@@ -1,6 +1,13 @@
 {
-  "name": "slimclaw",
+  "name": "@evansantos/slimclaw",
   "version": "0.1.0",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/evansantos/slimclaw.git"
+  },
   "description": "Inference optimization middleware — windowing, routing, caching",
   "type": "module",
   "main": "dist/index.js",
@@ -10,7 +17,8 @@
     ]
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy-assets",
+    "copy-assets": "cp -r src/dashboard/views dist/dashboard/ && cp -r src/dashboard/public dist/dashboard/",
     "dev": "tsc --watch",
     "test": "vitest",
     "test:coverage": "vitest --coverage"

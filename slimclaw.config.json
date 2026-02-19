@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "metrics": {
+    "enabled": true,
+    "logLevel": "summary"
+  },
+  "cacheBreakpoints": {
+    "enabled": true,
+    "minContentLength": 1000
+  },
+  "dashboard": {
+    "enabled": true,
+    "port": 3333
+  }
+}

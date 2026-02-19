@@ -73,9 +73,9 @@ export interface HistoryResponse {
  * Create dashboard instance with default configuration
  */
 import type { MetricsCollector } from '../metrics/index.js';
+import { DashboardServer } from './server.js';
 
 export function createDashboard(collector: MetricsCollector, port = 3001) {
-  const { DashboardServer } = require('./server.js');
   return new DashboardServer(collector, { port, host: '0.0.0.0', basePath: '' });
 }
 

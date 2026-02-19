@@ -21,6 +21,10 @@ export {
   type HistoryResponse
 } from './dashboard/index.js';
 
+// Import dashboard functionality for internal use
+import { createDashboard } from './dashboard/index.js';
+import type { MetricsCollector, OptimizerMetrics, MetricsStats } from './metrics/index.js';
+
 // Config schema for OpenClaw
 const slimclawConfigSchema = {
   type: 'object' as const,
@@ -55,7 +59,8 @@ const slimclawConfigSchema = {
 // Types
 interface SlimClawMetrics {
   totalRequests: number;
-  totalInputTokens: number;
+  totalInputTokens: number;        // Billed input tokens
+  totalOriginalTokens: number;     // Total tokens before caching (input + cacheRead)
   totalOutputTokens: number;
   totalCacheReadTokens: number;
   totalCacheWriteTokens: number;
@@ -78,12 +83,126 @@ interface RequestMetric {
 const metrics: SlimClawMetrics = {
   totalRequests: 0,
   totalInputTokens: 0,
+  totalOriginalTokens: 0,
   totalOutputTokens: 0,
   totalCacheReadTokens: 0,
   totalCacheWriteTokens: 0,
   estimatedSavings: 0,
   requestHistory: [],
 };
+
+// Bridge adapter for dashboard - converts our simple metrics to MetricsCollector interface
+class SlimClawMetricsAdapter implements Pick<MetricsCollector, 'getAll' | 'getRecent' | 'getStats' | 'getStatus'> {
+  getAll(): OptimizerMetrics[] {
+    return metrics.requestHistory.map(this.convertToOptimizerMetrics);
+  }
+
+  getRecent(count: number): OptimizerMetrics[] {
+    const recent = metrics.requestHistory.slice(-count);
+    return recent.map(this.convertToOptimizerMetrics);
+  }
+
+  getStats(): MetricsStats {
+    const totalRequests = metrics.totalRequests;
+    if (totalRequests === 0) {
+      return {
+        totalRequests: 0,
+        averageOriginalTokens: 0,
+        averageOptimizedTokens: 0,
+        averageTokensSaved: 0,
+        averageSavingsPercent: 0,
+        windowingUsagePercent: 0,
+        cacheUsagePercent: 0,
+        classificationDistribution: { simple: 0, mid: 0, complex: 0, reasoning: 0 },
+        routingUsagePercent: 0,
+        modelDowngradePercent: 0,
+        averageLatencyMs: 0,
+        totalCostSaved: 0,
+      };
+    }
+
+    const avgOriginalTokens = metrics.totalOriginalTokens / totalRequests;
+    const avgSaved = metrics.estimatedSavings / totalRequests;
+    // Percentage should be savings / original tokens, not savings / billed tokens
+    const avgSavingsPercent = avgOriginalTokens > 0 ? (avgSaved / avgOriginalTokens) * 100 : 0;
+    
+    const cacheUsagePercent = totalRequests > 0 
+      ? (metrics.requestHistory.filter(r => r.cacheReadTokens > 0).length / totalRequests) * 100 
+      : 0;
+
+    // Estimate cost saved (rough approximation based on token savings)
+    const estimatedCostPerToken = 0.000003; // ~$3 per 1M tokens (rough average)
+    const totalCostSaved = metrics.estimatedSavings * estimatedCostPerToken;
+
+    return {
+      totalRequests,
+      averageOriginalTokens: Math.round(avgOriginalTokens),
+      averageOptimizedTokens: Math.round(avgOriginalTokens - avgSaved),
+      averageTokensSaved: Math.round(avgSaved),
+      averageSavingsPercent: Math.round(avgSavingsPercent * 100) / 100,
+      windowingUsagePercent: 0, // We don't track windowing in simple metrics
+      cacheUsagePercent: Math.round(cacheUsagePercent),
+      classificationDistribution: { simple: 0, mid: 0, complex: totalRequests, reasoning: 0 },
+      routingUsagePercent: 0, // We don't track routing in simple metrics
+      modelDowngradePercent: 0,
+      averageLatencyMs: 0, // We don't track latency in simple metrics
+      totalCostSaved: Math.round(totalCostSaved * 100) / 100,
+    };
+  }
+
+  getStatus(): {
+    enabled: boolean;
+    totalProcessed: number;
+    bufferSize: number;
+    ringSize: number;
+    pendingFlush: number;
+  } {
+    return {
+      enabled: true,
+      totalProcessed: metrics.totalRequests,
+      bufferSize: metrics.requestHistory.length,
+      ringSize: 100, // We keep last 100 in history
+      pendingFlush: 0,
+    };
+  }
+
+  private convertToOptimizerMetrics = (request: RequestMetric): OptimizerMetrics => ({
+    requestId: request.runId,
+    timestamp: new Date(request.timestamp).toISOString(),
+    agentId: 'unknown',
+    sessionKey: 'unknown',
+    mode: 'active' as const,
+    originalModel: request.model,
+    originalMessageCount: 0, // Not tracked in simple metrics
+    originalTokenEstimate: request.inputTokens,
+    windowingApplied: false,
+    windowedMessageCount: 0,
+    windowedTokenEstimate: request.inputTokens,
+    trimmedMessages: 0,
+    summaryTokens: 0,
+    summarizationMethod: 'none' as const,
+    classificationTier: 'complex' as const,
+    classificationConfidence: 1,
+    classificationScores: { simple: 0, mid: 0, complex: 1, reasoning: 0 },
+    classificationSignals: [],
+    routingApplied: false,
+    targetModel: request.model,
+    modelDowngraded: false,
+    modelUpgraded: false,
+    cacheBreakpointsInjected: request.cacheReadTokens > 0 ? 1 : 0,
+    actualInputTokens: request.inputTokens,
+    actualOutputTokens: request.outputTokens,
+    cacheReadTokens: request.cacheReadTokens,
+    cacheWriteTokens: request.cacheWriteTokens,
+    latencyMs: null,
+    tokensSaved: request.cacheReadTokens * 0.9, // 90% savings from cache
+    estimatedCostOriginal: null,
+    estimatedCostOptimized: null,
+    estimatedCostSaved: null,
+  });
+}
+
+const metricsAdapter = new SlimClawMetricsAdapter();
 
 // Pending requests for correlation
 const pendingRequests = new Map<string, { inputTokens: number; timestamp: number }>();
@@ -112,8 +231,22 @@ const slimclawPlugin = {
   configSchema: slimclawConfigSchema,
 
   register(api: OpenClawPluginApi) {
-    // Load config
-    const rawConfig = api.pluginConfig as Record<string, unknown> || {};
+    // Load config from local file first, then merge with api.pluginConfig
+    let fileConfig: Record<string, unknown> = {};
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const configPath = path.join(__dirname, '..', 'slimclaw.config.json');
+      if (fs.existsSync(configPath)) {
+        fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        api.logger.info(`[SlimClaw] Loaded config from ${configPath}`);
+      }
+    } catch (err) {
+      api.logger.info(`[SlimClaw] Could not load local config: ${err}`);
+    }
+    
+    // Merge: file config takes precedence, then api.pluginConfig
+    const rawConfig = { ...fileConfig, ...(api.pluginConfig as Record<string, unknown> || {}) };
     pluginConfig = {
       enabled: rawConfig.enabled !== false,
       metrics: {
@@ -198,14 +331,17 @@ const slimclawPlugin = {
 
       // Calculate savings from cache hits
       // Cache reads are 90% cheaper than regular input tokens
-      const cacheSavings = cacheReadTokens * 0.9;
-      const savingsPercent = inputTokens > 0 
-        ? (cacheSavings / inputTokens * 100) 
+      // Total tokens = billed input + cached input (what would have been billed without cache)
+      const totalInputTokens = inputTokens + cacheReadTokens;
+      const cacheSavings = cacheReadTokens * 0.9; // 90% discount on cached tokens
+      const savingsPercent = totalInputTokens > 0 
+        ? (cacheSavings / totalInputTokens * 100) 
         : 0;
 
       // Update global metrics
       metrics.totalRequests++;
       metrics.totalInputTokens += inputTokens;
+      metrics.totalOriginalTokens += totalInputTokens; // Track original (before cache discount)
       metrics.totalOutputTokens += outputTokens;
       metrics.totalCacheReadTokens += cacheReadTokens;
       metrics.totalCacheWriteTokens += cacheWriteTokens;
@@ -326,9 +462,26 @@ const slimclawPlugin = {
 
     api.logger.info('SlimClaw ready - /slimclaw for metrics');
 
-    // Dashboard requires full MetricsCollector - TODO: integrate properly
+    // Start dashboard if enabled
     if (pluginConfig.dashboard.enabled) {
-      api.logger.info(`SlimClaw dashboard requested on port ${pluginConfig.dashboard.port} - not yet integrated with new plugin architecture`);
+      try {
+        api.logger.info(`Starting SlimClaw dashboard on port ${pluginConfig.dashboard.port}`);
+        
+        // Create dashboard with our metrics adapter
+        const dashboard = createDashboard(metricsAdapter as any, pluginConfig.dashboard.port);
+        
+        // Start the dashboard server asynchronously
+        dashboard.start()
+          .then(() => {
+            api.logger.info(`SlimClaw dashboard started successfully on http://localhost:${pluginConfig.dashboard.port}`);
+          })
+          .catch((error: unknown) => {
+            api.logger.info(`Failed to start SlimClaw dashboard: ${error instanceof Error ? error.message : error}`);
+          });
+          
+      } catch (error) {
+        api.logger.info(`Failed to create SlimClaw dashboard: ${error instanceof Error ? error.message : error}`);
+      }
     }
   },
 };
@@ -341,6 +494,7 @@ export function getMetrics(): SlimClawMetrics {
 export function resetMetrics(): void {
   metrics.totalRequests = 0;
   metrics.totalInputTokens = 0;
+  metrics.totalOriginalTokens = 0;
   metrics.totalOutputTokens = 0;
   metrics.totalCacheReadTokens = 0;
   metrics.totalCacheWriteTokens = 0;

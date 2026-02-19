@@ -11,18 +11,53 @@
         "type": "boolean",
         "default": true
       },
-      "mode": {
-        "type": "string",
-        "enum": ["shadow", "active"],
-        "default": "shadow"
+      "metrics": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "logLevel": {
+            "type": "string",
+            "enum": ["silent", "summary", "verbose"],
+            "default": "summary"
+          }
+        },
+        "additionalProperties": false
       },
-      "windowSize": {
-        "type": "number",
-        "default": 50000
+      "cacheBreakpoints": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "minContentLength": {
+            "type": "number",
+            "default": 1000
+          },
+          "provider": {
+            "type": "string",
+            "enum": ["anthropic"],
+            "default": "anthropic"
+          }
+        },
+        "additionalProperties": false
       },
-      "cacheEnabled": {
-        "type": "boolean",
-        "default": true
+      "dashboard": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "port": {
+            "type": "number",
+            "default": 3333
+          }
+        },
+        "additionalProperties": false
       }
     },
     "additionalProperties": false
