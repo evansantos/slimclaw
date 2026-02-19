@@ -11,6 +11,9 @@ import { HybridRouter } from '../routing/hybrid-router.js';
 import { ClawRouterAdapter } from '../routing/clawrouter-adapter.js';
 import { HeuristicProvider } from '../routing/heuristic-provider.js';
 import type { RoutingDecision } from '../routing/types.js';
+import { createSlimClawLogger } from '../logging/index.js';
+
+const logger = createSlimClawLogger('warn', { component: 'ClawRouterClassifier' });
 
 /**
  * Singleton hybrid router instance (lazy initialization)
@@ -106,7 +109,7 @@ function mapRoutingDecisionToClassification(
   if (validTiers.has(normalized)) {
     tier = normalized as ComplexityTier;
   } else {
-    console.warn(`ClawRouter: Unknown tier '${decision.tier}' encountered, falling back to 'mid'`);
+    logger.warn(`Unknown tier '${decision.tier}' encountered, falling back to 'mid'`);
     tier = 'mid';
   }
   
@@ -122,11 +125,15 @@ function mapRoutingDecisionToClassification(
     // When confidence is 0, we have no preference, so distribute equally across all tiers
     scores = { simple: 0.25, mid: 0.25, complex: 0.25, reasoning: 0.25 };
   } else {
+    // Dynamically calculate divisor based on number of non-selected tiers
+    const allTiers: ComplexityTier[] = ['simple', 'mid', 'complex', 'reasoning'];
+    const otherTiersCount = allTiers.length - 1;
+    const scoreForOthers = otherTiersCount > 0 ? (1 - decision.confidence) / otherTiersCount : 0;
     scores = {
-      simple: tier === 'simple' ? decision.confidence : (1 - decision.confidence) / 3,
-      mid: tier === 'mid' ? decision.confidence : (1 - decision.confidence) / 3,
-      complex: tier === 'complex' ? decision.confidence : (1 - decision.confidence) / 3,
-      reasoning: tier === 'reasoning' ? decision.confidence : (1 - decision.confidence) / 3
+      simple: tier === 'simple' ? decision.confidence : scoreForOthers,
+      mid: tier === 'mid' ? decision.confidence : scoreForOthers,
+      complex: tier === 'complex' ? decision.confidence : scoreForOthers,
+      reasoning: tier === 'reasoning' ? decision.confidence : scoreForOthers
     };
     
     // Normalize scores to sum to 1
