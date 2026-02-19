@@ -26,6 +26,13 @@ export {
   type ClassificationResult 
 } from './classify.js';
 
+// ClawRouter-based classification
+export { 
+  classifyWithRouter,
+  extractTextFromMessages,
+  getHybridRouter
+} from './clawrouter-classifier.js';
+
 // Types and interfaces
 export type { 
   ComplexityTier, 

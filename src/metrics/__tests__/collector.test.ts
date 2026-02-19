@@ -9,6 +9,58 @@ import type { OptimizerMetrics, MetricsConfig } from '../types.js';
 // Mock the reporter
 const mockReporter = {
   writeMetrics: vi.fn().mockResolvedValue(undefined),
+  computeStats: vi.fn().mockImplementation((metrics: OptimizerMetrics[]) => {
+    if (metrics.length === 0) {
+      return {
+        totalRequests: 0,
+        averageOriginalTokens: 0,
+        averageOptimizedTokens: 0,
+        averageTokensSaved: 0,
+        averageSavingsPercent: 0,
+        windowingUsagePercent: 0,
+        cacheUsagePercent: 0,
+        classificationDistribution: { simple: 0, mid: 0, complex: 0, reasoning: 0 },
+        routingUsagePercent: 0,
+        modelDowngradePercent: 0,
+        averageLatencyMs: 0,
+        totalCostSaved: 0,
+        averageRoutingSavings: 0,
+        routingTierDistribution: { simple: 0, mid: 0, complex: 0, reasoning: 0 },
+        modelUpgradePercent: 0,
+        combinedSavingsPercent: 0,
+      };
+    }
+
+    const total = metrics.length;
+    const avgOriginal = metrics.reduce((sum, m) => sum + m.originalTokenEstimate, 0) / total;
+    const avgWindowed = metrics.reduce((sum, m) => sum + m.windowedTokenEstimate, 0) / total;
+    const avgSaved = metrics.reduce((sum, m) => sum + (m.tokensSaved ?? 0), 0) / total;
+    const savingsPercent = avgOriginal > 0 ? ((avgOriginal - avgWindowed) / avgOriginal) * 100 : 0;
+
+    return {
+      totalRequests: total,
+      averageOriginalTokens: Math.round(avgOriginal),
+      averageOptimizedTokens: Math.round(avgWindowed),
+      averageTokensSaved: Math.round(avgSaved),
+      averageSavingsPercent: Math.round(savingsPercent * 100) / 100,
+      windowingUsagePercent: Math.round((metrics.filter(m => m.windowingApplied).length / total) * 100),
+      cacheUsagePercent: Math.round((metrics.filter(m => m.cacheBreakpointsInjected > 0).length / total) * 100),
+      classificationDistribution: {
+        simple: metrics.filter(m => m.classificationTier === 'simple').length,
+        mid: metrics.filter(m => m.classificationTier === 'mid').length,
+        complex: metrics.filter(m => m.classificationTier === 'complex').length,
+        reasoning: metrics.filter(m => m.classificationTier === 'reasoning').length,
+      },
+      routingUsagePercent: Math.round((metrics.filter(m => m.routingApplied).length / total) * 100),
+      modelDowngradePercent: Math.round((metrics.filter(m => m.modelDowngraded).length / total) * 100),
+      averageLatencyMs: Math.round(metrics.reduce((sum, m) => sum + (m.latencyMs ?? 0), 0) / total),
+      totalCostSaved: Math.round(metrics.reduce((sum, m) => sum + (m.estimatedCostSaved ?? 0), 0) * 100) / 100,
+      averageRoutingSavings: 0, // Not implemented in mock
+      routingTierDistribution: { simple: 0, mid: 0, complex: 0, reasoning: 0 }, // Not implemented in mock
+      modelUpgradePercent: Math.round((metrics.filter(m => m.modelUpgraded).length / total) * 100),
+      combinedSavingsPercent: savingsPercent, // Same as windowing savings in mock
+    };
+  }),
 };
 
 describe('MetricsCollector', () => {
@@ -57,6 +109,7 @@ describe('MetricsCollector', () => {
       flushInterval: 5,
       ringBufferSize: 10,
       logDir: 'test-metrics',
+      trackRouting: true,
     };
     collector = new MetricsCollector(config, mockReporter as any);
     mockReporter.writeMetrics.mockClear();

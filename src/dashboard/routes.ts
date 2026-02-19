@@ -237,6 +237,62 @@ export function setupRoutes(collector: MetricsCollector): Hono {
   });
 
   /**
+   * GET /api/routing-stats - Routing and combined optimization metrics
+   */
+  app.get('/api/routing-stats', (c) => {
+    try {
+      const stats = collector.getStats();
+      const recent = collector.getRecent(100); // Get more data for routing analysis
+
+      // Calculate routing-specific metrics
+      const routingMetrics = recent.filter(m => m.routingApplied);
+      const hasRoutingData = routingMetrics.length > 0;
+
+      // Tier distribution percentages
+      const totalRoutingRequests = Object.values(stats.routingTierDistribution).reduce((a, b) => a + b, 0);
+      const tierDistribution = totalRoutingRequests > 0 ? {
+        simple: Math.round((stats.routingTierDistribution.simple / totalRoutingRequests) * 100),
+        mid: Math.round((stats.routingTierDistribution.mid / totalRoutingRequests) * 100), 
+        complex: Math.round((stats.routingTierDistribution.complex / totalRoutingRequests) * 100),
+        reasoning: Math.round((stats.routingTierDistribution.reasoning / totalRoutingRequests) * 100)
+      } : {
+        simple: 0,
+        mid: 0,
+        complex: 0,
+        reasoning: 0
+      };
+
+      return c.json({
+        timestamp: new Date().toISOString(),
+        hasData: hasRoutingData,
+        
+        // Core routing metrics
+        routingUsage: Math.round(stats.routingUsagePercent * 100) / 100,
+        averageRoutingSavings: Math.round(stats.averageRoutingSavings * 100) / 100,
+        tierDistribution,
+        
+        // Model routing behavior  
+        modelDowngrade: Math.round(stats.modelDowngradePercent * 100) / 100,
+        modelUpgrade: Math.round(stats.modelUpgradePercent * 100) / 100,
+        
+        // Combined optimization results
+        combinedSavings: Math.round(stats.combinedSavingsPercent * 100) / 100,
+        
+        // Additional context
+        totalRequests: stats.totalRequests,
+        routingRequests: totalRoutingRequests
+      });
+    } catch (error) {
+      logger.error('Failed to fetch routing stats', error instanceof Error ? error : { error });
+      return c.json({ 
+        error: 'Internal server error',
+        timestamp: new Date().toISOString(),
+        hasData: false
+      }, 500);
+    }
+  });
+
+  /**
    * GET /health - Health check endpoint
    */
   app.get('/health', (c) => {

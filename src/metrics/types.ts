@@ -42,6 +42,11 @@ export interface OptimizerMetrics {
   targetModel: string;
   modelDowngraded: boolean;
   modelUpgraded: boolean;
+  routingTier?: ComplexityTier;
+  routingConfidence?: number;
+  routingSavingsPercent?: number;
+  routingCostEstimate?: number;
+  combinedSavingsPercent?: number;
 
   // — Cache —
   cacheBreakpointsInjected: number;
@@ -76,6 +81,10 @@ export interface MetricsStats {
   modelDowngradePercent: number;
   averageLatencyMs: number;
   totalCostSaved: number;
+  averageRoutingSavings: number;
+  routingTierDistribution: Record<ComplexityTier, number>;
+  modelUpgradePercent: number;
+  combinedSavingsPercent: number;
 }
 
 /**
@@ -89,4 +98,6 @@ export interface MetricsConfig {
   ringBufferSize: number;
   /** Directory for JSONL metric logs (relative to ~/.openclaw/data/slimclaw/) */
   logDir: string;
+  /** Flag to enable/disable routing metrics tracking */
+  trackRouting: boolean;
 }

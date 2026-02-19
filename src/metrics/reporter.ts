@@ -6,7 +6,7 @@
 import { appendFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import type { OptimizerMetrics, MetricsConfig } from './types.js';
+import type { OptimizerMetrics, MetricsConfig, MetricsStats, ComplexityTier } from './types.js';
 
 export class MetricsReporter {
   private flushTimer: NodeJS.Timeout | null = null;
@@ -216,5 +216,134 @@ export class MetricsReporter {
    */
   getMetricsDir(): string {
     return join(this.baseDir, this.config.logDir);
+  }
+
+  /**
+   * Compute aggregate statistics from metrics array
+   */
+  computeStats(metrics: OptimizerMetrics[]): MetricsStats {
+    if (metrics.length === 0) {
+      return {
+        totalRequests: 0,
+        averageOriginalTokens: 0,
+        averageOptimizedTokens: 0,
+        averageTokensSaved: 0,
+        averageSavingsPercent: 0,
+        windowingUsagePercent: 0,
+        cacheUsagePercent: 0,
+        classificationDistribution: {
+          simple: 0,
+          mid: 0,
+          complex: 0,
+          reasoning: 0,
+        },
+        routingUsagePercent: 0,
+        modelDowngradePercent: 0,
+        averageLatencyMs: 0,
+        totalCostSaved: 0,
+        averageRoutingSavings: 0,
+        routingTierDistribution: {
+          simple: 0,
+          mid: 0,
+          complex: 0,
+          reasoning: 0,
+        },
+        modelUpgradePercent: 0,
+        combinedSavingsPercent: 0,
+      };
+    }
+
+    const totalRequests = metrics.length;
+
+    // Basic token stats
+    const averageOriginalTokens = 
+      metrics.reduce((sum, m) => sum + m.originalTokenEstimate, 0) / totalRequests;
+    const averageOptimizedTokens = 
+      metrics.reduce((sum, m) => sum + m.windowedTokenEstimate, 0) / totalRequests;
+    const averageTokensSaved = 
+      metrics.reduce((sum, m) => sum + (m.tokensSaved ?? 0), 0) / totalRequests;
+
+    // Savings percent
+    const savingsPercents = metrics
+      .filter(m => m.originalTokenEstimate > 0)
+      .map(m => ((m.originalTokenEstimate - m.windowedTokenEstimate) / m.originalTokenEstimate) * 100);
+    const averageSavingsPercent = savingsPercents.length > 0
+      ? savingsPercents.reduce((a, b) => a + b, 0) / savingsPercents.length
+      : 0;
+
+    // Windowing and cache usage
+    const windowingUsagePercent = (metrics.filter(m => m.windowingApplied).length / totalRequests) * 100;
+    const cacheUsagePercent = (metrics.filter(m => (m.cacheReadTokens ?? 0) > 0).length / totalRequests) * 100;
+
+    // Classification distribution
+    const classificationDistribution: Record<ComplexityTier, number> = {
+      simple: 0,
+      mid: 0,
+      complex: 0,
+      reasoning: 0,
+    };
+    metrics.forEach(m => {
+      classificationDistribution[m.classificationTier]++;
+    });
+
+    // Routing stats
+    const routingUsagePercent = (metrics.filter(m => m.routingApplied).length / totalRequests) * 100;
+    const modelDowngradePercent = (metrics.filter(m => m.modelDowngraded).length / totalRequests) * 100;
+
+    // Average latency
+    const latencies = metrics.filter(m => m.latencyMs !== null).map(m => m.latencyMs!);
+    const averageLatencyMs = latencies.length > 0
+      ? latencies.reduce((a, b) => a + b, 0) / latencies.length
+      : 0;
+
+    // Total cost saved
+    const totalCostSaved = metrics.reduce((sum, m) => sum + (m.estimatedCostSaved ?? 0), 0);
+
+    // NEW ROUTING STATS
+
+    // Average routing savings (only for metrics with routing applied)
+    const routingMetrics = metrics.filter(m => m.routingApplied && m.routingSavingsPercent !== undefined);
+    const averageRoutingSavings = routingMetrics.length > 0
+      ? routingMetrics.reduce((sum, m) => sum + m.routingSavingsPercent!, 0) / routingMetrics.length
+      : 0;
+
+    // Routing tier distribution (only for metrics with routing applied)
+    const routingTierDistribution: Record<ComplexityTier, number> = {
+      simple: 0,
+      mid: 0,
+      complex: 0,
+      reasoning: 0,
+    };
+    metrics.filter(m => m.routingApplied && m.routingTier !== undefined).forEach(m => {
+      routingTierDistribution[m.routingTier!]++;
+    });
+
+    // Model upgrade percent
+    const modelUpgradePercent = (metrics.filter(m => m.modelUpgraded).length / totalRequests) * 100;
+
+    // Combined savings percent (if available)
+    const combinedSavingsMetrics = metrics.filter(m => m.combinedSavingsPercent !== undefined);
+    const combinedSavingsPercent = combinedSavingsMetrics.length > 0
+      ? combinedSavingsMetrics.reduce((sum, m) => sum + m.combinedSavingsPercent!, 0) / combinedSavingsMetrics.length
+      : 0;
+
+    return {
+      totalRequests,
+      averageOriginalTokens,
+      averageOptimizedTokens,
+      averageTokensSaved,
+      averageSavingsPercent,
+      windowingUsagePercent,
+      cacheUsagePercent,
+      classificationDistribution,
+      routingUsagePercent,
+      modelDowngradePercent,
+      averageLatencyMs,
+      totalCostSaved,
+      averageRoutingSavings,
+      routingTierDistribution,
+      modelUpgradePercent,
+      combinedSavingsPercent,
+    };
   }
 }

@@ -118,6 +118,10 @@ class SlimClawMetricsAdapter implements Pick<MetricsCollector, 'getAll' | 'getRe
         modelDowngradePercent: 0,
         averageLatencyMs: 0,
         totalCostSaved: 0,
+        averageRoutingSavings: 0,
+        routingTierDistribution: { simple: 0, mid: 0, complex: 0, reasoning: 0 },
+        modelUpgradePercent: 0,
+        combinedSavingsPercent: 0,
       };
     }
 
@@ -147,6 +151,10 @@ class SlimClawMetricsAdapter implements Pick<MetricsCollector, 'getAll' | 'getRe
       modelDowngradePercent: 0,
       averageLatencyMs: 0, // We don't track latency in simple metrics
       totalCostSaved: Math.round(totalCostSaved * 100) / 100,
+      averageRoutingSavings: 0, // We don't track routing in simple metrics
+      routingTierDistribution: { simple: 0, mid: 0, complex: 0, reasoning: 0 },
+      modelUpgradePercent: 0,
+      combinedSavingsPercent: 0,
     };
   }
 
