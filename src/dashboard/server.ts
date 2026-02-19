@@ -115,8 +115,22 @@ export class DashboardServer {
         hostname: this.config.host,
       }) as unknown as Server;
 
+      // Handle EADDRINUSE gracefully instead of crashing
+      this.server.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EADDRINUSE') {
+          console.warn(`⚠️ SlimClaw Dashboard: port ${this.config.port} already in use, skipping dashboard`);
+          this.server = null;
+        } else {
+          console.error('SlimClaw Dashboard server error:', err);
+        }
+      });
+
       console.log(`🌟 SlimClaw Dashboard running at http://${this.config.host}:${this.config.port}`);
     } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+        console.warn(`⚠️ SlimClaw Dashboard: port ${this.config.port} already in use, skipping`);
+        return;
+      }
       console.error('Failed to start dashboard server:', error);
       throw error;
     }
