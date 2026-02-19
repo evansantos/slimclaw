@@ -105,7 +105,10 @@ export class MetricsCollector {
    */
   getStats(): MetricsStats {
     const data = this.getAll();
-    return this.reporter?.computeStats(data) || this.getEmptyStats();
+    if (this.reporter) {
+      return this.reporter.computeStats(data);
+    }
+    return this.getEmptyStats();
   }
 
   private getEmptyStats(): MetricsStats {

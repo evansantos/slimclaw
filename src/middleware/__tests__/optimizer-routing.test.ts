@@ -147,7 +147,7 @@ describe('Optimizer with ClawRouter Integration', () => {
         testContext
       );
 
-      expect(mockClassifyWithRouter).toHaveBeenCalledWith(testMessages);
+      expect(mockClassifyWithRouter).toHaveBeenCalledWith(testMessages, { originalModel: testContext.originalModel });
       expect(mockClassifyComplexity).not.toHaveBeenCalled();
       
       // Check that routing was applied

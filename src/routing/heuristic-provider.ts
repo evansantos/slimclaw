@@ -37,14 +37,14 @@ export class HeuristicProvider implements IRoutingProvider {
     // Check for overrides
     const overrideContext: RoutingContext = {
       headers: config?.headers as Record<string, string | string[]>,
-      originalModel: config?.originalModel as string,
+      originalModel: config?.originalModel as string ?? 'anthropic/claude-sonnet-4-20250514',
       sessionKey: config?.sessionKey as string,
       agentId: config?.agentId as string,
       ...config
     };
 
     const override = processOverrides(
-      config?.originalModel as string || 'anthropic/claude-sonnet-4-20250514',
+      config?.originalModel as string ?? 'anthropic/claude-sonnet-4-20250514',
       classification.tier,
       classification.confidence,
       routingConfig,
@@ -60,7 +60,7 @@ export class HeuristicProvider implements IRoutingProvider {
       classification.tier,
       contextTokens,
       selectedModel,
-      config?.originalModel as string
+      config?.originalModel as string ?? 'anthropic/claude-sonnet-4-20250514'
     );
 
     return {

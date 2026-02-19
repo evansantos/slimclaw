@@ -342,10 +342,10 @@ describe('MetricsReporter', () => {
     it('should start and stop periodic flushing', () => {
       const mockCollector = {
         flush: vi.fn().mockResolvedValue(0),
-      };
+      } as import('../collector.js').MetricsCollector;
 
       // Test start
-      reporter.startPeriodicFlush(mockCollector as any);
+      reporter.startPeriodicFlush(mockCollector);
       
       // Test stop
       reporter.stopPeriodicFlush();

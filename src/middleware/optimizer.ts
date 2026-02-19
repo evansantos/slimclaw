@@ -146,73 +146,66 @@ export async function inferenceOptimizer(
     let classificationResult;
     try {
       if (config.routing.enabled) {
-        // Skip routing entirely if originalModel is undefined
+        logger.debug('Starting routing step');
         if (!context.originalModel) {
-          logger.warn('Routing skipped - originalModel is undefined');
-          classificationResult = classifyComplexity(optimizedMessages);
-        } else {
-          logger.debug('Starting routing step');
-
-          // Use ClawRouter for classification when routing is enabled
-          classificationResult = classifyWithRouter(optimizedMessages);
+          logger.warn('Routing with undefined originalModel — router will handle fallback');
+        }
+        classificationResult = classifyWithRouter(optimizedMessages, { originalModel: context.originalModel });
+        
+        // Extract routing data from classification result
+        routingTier = classificationResult.tier;
+        routingConfidence = classificationResult.confidence;
+        
+        // Determine target model based on classification
+        const tierModel = config.routing.tiers[classificationResult.tier];
+        if (tierModel && tierModel !== context.originalModel) {
           
-          // Extract routing data from classification result
-          routingTier = classificationResult.tier;
-          routingConfidence = classificationResult.confidence;
+          // Check if original model is pinned (should not be routed)
+          const isPinned = context.originalModel ? config.routing.pinnedModels.includes(context.originalModel) : false;
           
-          // Determine target model based on classification
-          const tierModel = config.routing.tiers[classificationResult.tier];
-          if (tierModel && tierModel !== context.originalModel) {
+          // Only apply routing if confidence meets threshold and model isn't pinned
+          if (classificationResult.confidence >= config.routing.minConfidence && !isPinned) {
+            targetModel = tierModel;
+            routingApplied = true;
             
-            // Check if original model is pinned (should not be routed)
-            const isPinned = config.routing.pinnedModels.includes(context.originalModel);
+            // Determine if it's an upgrade or downgrade using shared tier order
+            const originalTier = getModelTier(context.originalModel ?? 'anthropic/claude-sonnet-4-20250514', config.routing.tiers);
+            const newTier = classificationResult.tier;
             
-            // Only apply routing if confidence meets threshold and model isn't pinned
-            if (classificationResult.confidence >= config.routing.minConfidence && !isPinned) {
-              targetModel = tierModel;
-              routingApplied = true;
-              
-              // Determine if it's an upgrade or downgrade using shared tier order
-              const originalTier = getModelTier(context.originalModel, config.routing.tiers);
-              const newTier = classificationResult.tier;
-              
-              if (isModelDowngrade(originalTier, newTier)) {
-                modelDowngraded = true;
-              } else if (isModelUpgrade(originalTier, newTier)) {
-                modelUpgraded = true;
-              }
-              
-              // Calculate estimated savings using shared pricing functions
-              // Merge user-configured pricing with defaults (user overrides win)
-              const pricing = config.routing.pricing 
-                ? { ...DEFAULT_MODEL_PRICING, ...config.routing.pricing }
-                : DEFAULT_MODEL_PRICING;
-              routingSavingsPercent = calculateRoutingSavings(context.originalModel, classificationResult.tier, pricing);
-              routingCostEstimate = estimateModelCost(tierModel, originalTokens, 0, pricing);
-
-              logger.info('Routing applied', {
-                originalModel: context.originalModel,
-                targetModel,
-                tier: classificationResult.tier,
-                confidence: classificationResult.confidence,
-                downgraded: modelDowngraded,
-                upgraded: modelUpgraded,
-                savingsPercent: routingSavingsPercent,
-              });
-            } else {
-              logger.debug('Routing skipped', {
-                reason: isPinned ? 'model_pinned' : 'low_confidence',
-                confidence: classificationResult.confidence,
-                threshold: config.routing.minConfidence,
-              });
+            if (isModelDowngrade(originalTier, newTier)) {
+              modelDowngraded = true;
+            } else if (isModelUpgrade(originalTier, newTier)) {
+              modelUpgraded = true;
             }
+            
+            // Calculate estimated savings using shared pricing functions
+            // Merge user-configured pricing with defaults (user overrides win)
+            const pricing = { ...DEFAULT_MODEL_PRICING, ...(config.routing.pricing ?? {}) };
+            routingSavingsPercent = calculateRoutingSavings(context.originalModel ?? 'anthropic/claude-sonnet-4-20250514', classificationResult.tier, pricing);
+            routingCostEstimate = estimateModelCost(tierModel, originalTokens, 0, pricing);
+
+            logger.info('Routing applied', {
+              originalModel: context.originalModel,
+              targetModel,
+              tier: classificationResult.tier,
+              confidence: classificationResult.confidence,
+              downgraded: modelDowngraded,
+              upgraded: modelUpgraded,
+              savingsPercent: routingSavingsPercent,
+            });
           } else {
-            logger.debug('Routing skipped - no tier model change needed', {
-              currentModel: context.originalModel,
-              suggestedTier: classificationResult.tier,
-              tierModel,
+            logger.debug('Routing skipped', {
+              reason: isPinned ? 'model_pinned' : 'low_confidence',
+              confidence: classificationResult.confidence,
+              threshold: config.routing.minConfidence,
             });
           }
+        } else {
+          logger.debug('Routing skipped - no tier model change needed', {
+            currentModel: context.originalModel,
+            suggestedTier: classificationResult.tier,
+            tierModel,
+          });
         }
       } else {
         // Routing disabled - use fallback heuristic classifier
@@ -348,15 +341,15 @@ export async function inferenceOptimizer(
       windowing: windowingApplied,
       trimmed: trimmedMessages,
       tokensSaved,
-      cache_breakpoints: cacheBreakpointsInjected,
-      original_tokens: originalTokens,
-      optimized_tokens: optimizedTokens,
-      summarization_method: summarizationMethod,
-      routing_applied: routingApplied,
-      target_model: targetModel,
-      routing_tier: routingTier,
-      routing_confidence: routingConfidence,
-      combined_savings_percent: combinedSavingsPercent,
+      cacheBreakpoints: cacheBreakpointsInjected,
+      originalTokens: originalTokens,
+      optimizedTokens: optimizedTokens,
+      summarizationMethod: summarizationMethod,
+      routingApplied: routingApplied,
+      targetModel: targetModel,
+      routingTier: routingTier,
+      routingConfidence: routingConfidence,
+      combinedSavingsPercent: combinedSavingsPercent,
     });
 
     logger.info('Optimization completed', {
@@ -435,7 +428,7 @@ function createPassthroughResult(
     sessionKey: context.sessionKey,
     mode: context.mode ?? "active",
     
-    originalModel: context.originalModel || null,
+    originalModel: context.originalModel ?? null,
     originalMessageCount: messages.length,
     originalTokenEstimate: tokens,
     
@@ -452,7 +445,7 @@ function createPassthroughResult(
     classificationSignals: [],
     
     routingApplied: false,
-    targetModel: context.originalModel || null,
+    targetModel: context.originalModel ?? null,
     modelDowngraded: false,
     modelUpgraded: false,
     combinedSavingsPercent: 0,

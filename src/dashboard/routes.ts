@@ -251,16 +251,11 @@ export function setupRoutes(collector: MetricsCollector): Hono {
       // Tier distribution percentages (use routingMetrics.length as denominator)
       const totalRoutingRequests = routingMetrics.length;
       const tierDistribution = totalRoutingRequests > 0 ? {
-        simple: Math.round((stats.routingTierDistribution.simple / totalRoutingRequests) * 100),
-        mid: Math.round((stats.routingTierDistribution.mid / totalRoutingRequests) * 100), 
-        complex: Math.round((stats.routingTierDistribution.complex / totalRoutingRequests) * 100),
-        reasoning: Math.round((stats.routingTierDistribution.reasoning / totalRoutingRequests) * 100)
-      } : {
-        simple: 0,
-        mid: 0,
-        complex: 0,
-        reasoning: 0
-      };
+        simple: Math.round((routingMetrics.filter(m => m.routingTier === 'simple').length / totalRoutingRequests) * 100),
+        mid: Math.round((routingMetrics.filter(m => m.routingTier === 'mid').length / totalRoutingRequests) * 100),
+        complex: Math.round((routingMetrics.filter(m => m.routingTier === 'complex').length / totalRoutingRequests) * 100),
+        reasoning: Math.round((routingMetrics.filter(m => m.routingTier === 'reasoning').length / totalRoutingRequests) * 100),
+      } : { simple: 0, mid: 0, complex: 0, reasoning: 0 };
 
       return c.json({
         timestamp: new Date().toISOString(),

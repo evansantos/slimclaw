@@ -139,7 +139,7 @@ async function addSampleData(collector: MetricsCollector) {
       agentId: sample.agentId,
       sessionKey: sample.sessionKey,
       mode: 'active',
-      originalModel: 'claude-3-sonnet',
+      originalModel: 'anthropic/claude-sonnet-4-20250514',
       originalMessageCount: Math.floor(sample.originalTokens / 400), // Rough estimate
       originalTokenEstimate: sample.originalTokens,
       windowingApplied: sample.windowingApplied,
@@ -158,7 +158,7 @@ async function addSampleData(collector: MetricsCollector) {
       },
       classificationSignals: ['demo_signal'],
       routingApplied: sample.classificationTier !== 'simple',
-      targetModel: sample.classificationTier === 'simple' ? 'claude-3-haiku' : 'claude-3-sonnet',
+      targetModel: sample.classificationTier === 'simple' ? 'anthropic/claude-3-haiku-20240307' : 'anthropic/claude-sonnet-4-20250514',
       modelDowngraded: sample.classificationTier === 'simple',
       modelUpgraded: false,
       routingTier: sample.classificationTier,
