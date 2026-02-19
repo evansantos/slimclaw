@@ -46,7 +46,7 @@ export interface OptimizerMetrics {
   routingConfidence?: number;
   routingSavingsPercent?: number;
   routingCostEstimate?: number;
-  combinedSavingsPercent?: number;
+  combinedSavingsPercent: number;
 
   // — Cache —
   cacheBreakpointsInjected: number;

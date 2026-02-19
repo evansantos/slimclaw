@@ -207,6 +207,7 @@ class SlimClawMetricsAdapter implements Pick<MetricsCollector, 'getAll' | 'getRe
     estimatedCostOriginal: null,
     estimatedCostOptimized: null,
     estimatedCostSaved: null,
+    combinedSavingsPercent: 0,
   });
 }
 
