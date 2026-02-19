@@ -4,10 +4,11 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MetricsCollector } from '../collector.js';
+import type { MetricsReporter } from '../reporter.js';
 import type { OptimizerMetrics, MetricsConfig } from '../types.js';
 
-// Mock the reporter
-const mockReporter = {
+// Mock the reporter — typed to match the methods MetricsCollector actually uses
+const mockReporter: Pick<MetricsReporter, 'writeMetrics' | 'computeStats'> = {
   writeMetrics: vi.fn().mockResolvedValue(undefined),
   computeStats: vi.fn().mockImplementation((metrics: OptimizerMetrics[]) => {
     if (metrics.length === 0) {
@@ -111,7 +112,7 @@ describe('MetricsCollector', () => {
       logDir: 'test-metrics',
       trackRouting: true,
     };
-    collector = new MetricsCollector(config, mockReporter as any);
+    collector = new MetricsCollector(config, mockReporter as MetricsReporter);
     mockReporter.writeMetrics.mockClear();
   });
 
@@ -188,7 +189,7 @@ describe('MetricsCollector', () => {
 
     it('should return 0 if config disabled', async () => {
       config.enabled = false;
-      collector = new MetricsCollector(config, mockReporter as any);
+      collector = new MetricsCollector(config, mockReporter as MetricsReporter);
       
       collector.record(createTestMetric());
       const flushed = await collector.flush();
