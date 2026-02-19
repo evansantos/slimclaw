@@ -86,6 +86,8 @@ npm run test:coverage                         # vitest with coverage report
 - `exactOptionalPropertyTypes` requires explicit `undefined` for optional fields
 - Dashboard server handles port conflicts gracefully (EADDRINUSE)
 - Config validation with Zod - provide meaningful error messages
+- `routing.pricing` overrides merge with `DEFAULT_MODEL_PRICING` — user config wins
+- Use `resetHybridRouter()` in tests to clear the singleton between test runs
 
 ## Review Checklist for PRs
 

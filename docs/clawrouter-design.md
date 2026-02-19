@@ -217,6 +217,12 @@ interface ClawRouterConfig {
     };
   };
   
+  // Custom pricing overrides (merges with DEFAULT_MODEL_PRICING)
+  pricing?: Record<string, {
+    inputPer1k: number;             // cost per 1k input tokens
+    outputPer1k: number;            // cost per 1k output tokens
+  }>;
+  
   // Heuristic fallback
   heuristic: {
     rules: HeuristicRule[];

@@ -96,6 +96,7 @@ Create `~/.openclaw/plugins/slimclaw/slimclaw.config.json`:
 | `routing.pinnedModels` | `[]` | Models exempt from routing |
 | `routing.tiers.*` | `haiku/sonnet/opus` | Model mapping by complexity tier |
 | `routing.reasoningBudget` | `10000` | Thinking token budget for reasoning |
+| `routing.pricing` | `undefined` | Custom model pricing overrides (per 1k tokens) |
 
 ## Dashboard
 
@@ -196,6 +197,23 @@ Update your config to enable routing:
   }
 }
 ```
+
+### Custom Pricing
+
+Override built-in model pricing to keep cost estimates accurate:
+
+```json
+{
+  "routing": {
+    "enabled": true,
+    "pricing": {
+      "anthropic/claude-sonnet-4-20250514": { "inputPer1k": 0.003, "outputPer1k": 0.015 }
+    }
+  }
+}
+```
+
+Custom pricing merges with defaults — only override what changed.
 
 ### Backward Compatibility
 
