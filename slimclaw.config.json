@@ -21,7 +21,7 @@
     },
     "reasoningBudget": 10000,
     "_crossProviderReference": {
-      "_note": "Option C (Hybrid) Cross-Provider Tier Mapping — uncomment tiers/tierProviders when ready",
+      "_note": "Option C (Hybrid) Cross-Provider Tier Mapping — reference for Phase 2 when hook mutations are supported. tierProviders glob patterns (openai/*) require matching logic in Phase 2.",
       "tiers": {
         "simple": "openai/gpt-4.1-nano",
         "mid": "anthropic/claude-sonnet-4-20250514",

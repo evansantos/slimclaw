@@ -274,9 +274,9 @@ describe('model-router', () => {
       expect(result).toBe(true); // complex (3) → simple (1) = downgrade
     });
 
-    it('should detect cross-provider downgrades (pro→flash)', () => {
-      // Test some pro model (complex tier) to flash model (mid tier)
-      const result = testTierBasedDowngrade('openai/gpt-4-pro', 'google/gemini-flash');
+    it('should detect cross-provider downgrades (gpt-4.1→flash)', () => {
+      // Test complex model to mid model = downgrade
+      const result = testTierBasedDowngrade('openai/gpt-4.1', 'google/gemini-2.5-flash');
       expect(result).toBe(true); // complex (3) → mid (2) = downgrade
     });
 
@@ -330,7 +330,7 @@ describe('model-router', () => {
 
     it('should detect tier-based downgrade: complex to simple models', () => {
       // This is the key test - any complex model to any simple model should be downgrade
-      const result = testTierBasedDowngrade('google/gemini-pro', 'anthropic/claude-3-haiku-20240307');
+      const result = testTierBasedDowngrade('openai/gpt-4.1', 'anthropic/claude-3-haiku-20240307');
       expect(result).toBe(true); // complex (3) → simple (1) = downgrade
     });
 
@@ -344,8 +344,8 @@ describe('model-router', () => {
       // Verify our tier inference is working as expected
       expect(inferTierFromModel('anthropic/claude-opus-4-20250514')).toBe('complex');
       expect(inferTierFromModel('some-provider/nano-model')).toBe('simple');
-      expect(inferTierFromModel('openai/gpt-4-pro')).toBe('complex');
-      expect(inferTierFromModel('google/gemini-flash')).toBe('mid');
+      expect(inferTierFromModel('openai/gpt-4.1')).toBe('complex');
+      expect(inferTierFromModel('google/gemini-2.5-flash')).toBe('mid');
       expect(inferTierFromModel('openai/o1')).toBe('reasoning');
       expect(inferTierFromModel('openai/o3')).toBe('reasoning');
       expect(inferTierFromModel('openai/gpt-4.1-mini')).toBe('mid');

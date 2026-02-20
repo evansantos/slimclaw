@@ -3,6 +3,7 @@
  */
 
 import type { ComplexityTier } from '../metrics/types.js';
+import { inferTierFromModel } from './tiers.js';
 
 /**
  * Default model pricing per 1k tokens
@@ -68,23 +69,10 @@ function getModelPricing(
     return pricing[`tier:${tier}`];
   }
   
-  // Infer from model name patterns
-  const lowerModel = model.toLowerCase();
-  
-  if (lowerModel.includes('haiku')) {
-    return pricing['tier:simple'];
-  }
-  if (lowerModel.includes('sonnet')) {
-    return pricing['tier:mid'];
-  }
-  if (lowerModel.includes('opus')) {
-    return pricing['tier:complex'];
-  }
-  if (lowerModel.includes('gpt-3.5')) {
-    return pricing['tier:simple'];
-  }
-  if (lowerModel.includes('gpt-4')) {
-    return pricing['tier:complex'];
+  // Infer tier from model name using centralized logic
+  const inferredTier = inferTierFromModel(model);
+  if (pricing[`tier:${inferredTier}`]) {
+    return pricing[`tier:${inferredTier}`];
   }
   
   // Default to mid-tier pricing

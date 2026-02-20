@@ -304,8 +304,8 @@ describe('pricing', () => {
         
         expect(cost).toBeGreaterThan(0);
         expect(Number.isFinite(cost)).toBe(true);
-        // Should fallback to tier:mid pricing
-        const expected = (1000/1000 * 0.003) + (1000/1000 * 0.015);
+        // Unknown models fall back to complex tier via inferTierFromModel
+        const expected = (1000/1000 * 0.015) + (1000/1000 * 0.075);
         expect(cost).toBe(expected);
       });
 

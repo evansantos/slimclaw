@@ -78,7 +78,7 @@ export function inferTierFromModel(model: string): ComplexityTier {
   // Claude models
   if (lowerModel.includes('haiku')) return 'simple';
   if (lowerModel.includes('sonnet')) return 'mid';
-  if (lowerModel.includes('opus')) return 'complex'; // Default opus to complex, not reasoning
+  if (lowerModel.includes('opus')) return 'complex'; // Opus is high-capability general, not dedicated reasoning like o3/o4
   
   // Cross-Provider Models - Reasoning tier (check first for specificity)
   if (lowerModel.includes('o1') || lowerModel.includes('o3') || lowerModel.includes('o4-mini')) return 'reasoning';
@@ -97,9 +97,10 @@ export function inferTierFromModel(model: string): ComplexityTier {
   if (lowerModel.includes('llama-4-maverick')) return 'mid';
   if (lowerModel.includes('qwen3-coder')) return 'mid';
   
-  // Cross-Provider Models - Complex tier (check after specific variants)
-  if (lowerModel.includes('gpt-4.1') && !lowerModel.includes('gpt-4.1-nano') && !lowerModel.includes('gpt-4.1-mini')) return 'complex';
-  if (lowerModel.includes('gpt-4-pro') || lowerModel.includes('gemini-pro')) return 'complex';
+  // Cross-Provider Models - Complex tier
+  // Note: gpt-4.1-nano and gpt-4.1-mini are already matched above in simple/mid tiers
+  if (lowerModel.includes('gpt-4.1') && !lowerModel.includes('nano') && !lowerModel.includes('mini')) return 'complex';
+  if (lowerModel.includes('gpt-4-pro')) return 'complex';
   
   // Legacy fallback patterns
   if (lowerModel.includes('gpt-3.5') || lowerModel.includes('llama-7b')) return 'simple';
