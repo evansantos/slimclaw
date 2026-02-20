@@ -1,5 +1,7 @@
 # ClawRouter Integration Design Document
 
+> **Note:** This is the original v0.1.0 design doc for ClawRouter integration. The routing system has since been extended significantly in v0.2.0 with cross-provider support, shadow routing, dynamic pricing, and latency tracking. See the Phase 2a/3a design docs in `~/.openclaw/workspace/docs/plans/` for the latest architecture.
+
 ## Overview
 
 This document defines the integration of ClawRouter (@blockrun/clawrouter) into SlimClaw for intelligent model routing based on 15-dimension complexity scoring. The implementation uses a hybrid approach with circuit breaker pattern for reliability.
