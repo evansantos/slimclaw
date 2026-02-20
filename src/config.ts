@@ -51,6 +51,28 @@ export const SlimClawConfigSchema = z.object({
       inputPer1k: z.number(),
       outputPer1k: z.number(),
     })).optional(),
+    /** Dynamic pricing configuration (Phase 3a) */
+    dynamicPricing: z.object({
+      /** Enable dynamic pricing from OpenRouter API */
+      enabled: z.boolean().default(false),
+      /** Cache TTL in milliseconds (6 hours default) */
+      ttlMs: z.number().min(60000).default(21600000), // Min 1 minute, default 6 hours
+      /** Refresh interval in milliseconds (same as ttlMs by default) */
+      refreshIntervalMs: z.number().min(60000).default(21600000), // Min 1 minute, default 6 hours
+      /** Fetch timeout in milliseconds */
+      timeoutMs: z.number().min(1000).default(10000), // Min 1 second, default 10 seconds
+      /** OpenRouter API URL */
+      apiUrl: z.string().min(1).default('https://openrouter.ai/api/v1/models'),
+    }).default({}),
+    /** Latency tracking configuration (Phase 3a) */
+    latencyTracking: z.object({
+      /** Enable latency tracking */
+      enabled: z.boolean().default(true),
+      /** Buffer size (number of samples to keep per model) */
+      bufferSize: z.number().int().min(1).max(1000).default(100), // Min 1, max 1000, default 100
+      /** Ignore latencies above this threshold (ms) */
+      outlierThresholdMs: z.number().min(1000).default(60000), // Min 1 second, default 60 seconds
+    }).default({}),
   }).default({}),
 
   caching: z.object({
@@ -115,6 +137,19 @@ export const DEFAULT_CONFIG: SlimClawConfig = {
     },
     shadowLogging: true,
     reasoningBudget: 10000,
+    // Phase 3a features with defaults
+    dynamicPricing: {
+      enabled: false,
+      ttlMs: 21600000, // 6 hours
+      refreshIntervalMs: 21600000, // 6 hours
+      timeoutMs: 10000,
+      apiUrl: 'https://openrouter.ai/api/v1/models',
+    },
+    latencyTracking: {
+      enabled: true,
+      bufferSize: 100,
+      outlierThresholdMs: 60000, // 60 seconds
+    },
   },
   caching: {
     enabled: true,

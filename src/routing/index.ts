@@ -64,6 +64,20 @@ export {
   type RoutingOutput 
 } from './routing-decision.js';
 
+// Phase 3a: Dynamic Pricing + Latency Tracking
+export { 
+  DynamicPricingCache,
+  type DynamicPricingConfig,
+  DEFAULT_DYNAMIC_PRICING_CONFIG
+} from './dynamic-pricing.js';
+
+export {
+  LatencyTracker,
+  type LatencyTrackerConfig,
+  type LatencyStats,
+  DEFAULT_LATENCY_TRACKER_CONFIG
+} from './latency-tracker.js';
+
 /**
  * Version info for the routing module
  */

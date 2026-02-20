@@ -11,9 +11,13 @@ import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { classifyWithRouter } from './classifier/clawrouter-classifier.js';
 import type { Message } from './classifier/classify.js';
 import type { ComplexityTier } from './classifier/signals.js';
+import { DEFAULT_CONFIG, type SlimClawConfig } from './config.js';
 
 // Shadow routing imports
 import { makeRoutingDecision, formatShadowLog } from './routing/index.js';
+
+// Phase 3a imports
+import { LatencyTracker, DEFAULT_LATENCY_TRACKER_CONFIG } from './routing/latency-tracker.js';
 
 // Dashboard exports
 export { 
@@ -94,6 +98,8 @@ interface RequestMetric {
     savingsPercent: number;
     wouldApply: boolean;
   };
+  /** Request latency in milliseconds (Phase 3a) */
+  latencyMs?: number;
 }
 
 // Global metrics store
@@ -244,6 +250,9 @@ class SlimClawMetricsAdapter implements Pick<MetricsCollector, 'getAll' | 'getRe
 
 const metricsAdapter = new SlimClawMetricsAdapter();
 
+// Phase 3a: Global latency tracker instance  
+let latencyTracker: LatencyTracker | null = null;
+
 // Pending requests for correlation
 const pendingRequests = new Map<string, { 
   inputTokens: number; 
@@ -266,7 +275,20 @@ let pluginConfig = {
     shadowLogging: true,
     reasoningBudget: 10000,
     openRouterHeaders: {} as Record<string, string> | undefined,
-    pricing: {} as Record<string, { inputPer1k: number; outputPer1k: number }> | undefined
+    pricing: {} as Record<string, { inputPer1k: number; outputPer1k: number }> | undefined,
+    // Phase 3a features
+    dynamicPricing: {
+      enabled: false,
+      ttlMs: 21600000, // 6 hours
+      refreshIntervalMs: 21600000,
+      timeoutMs: 10000,
+      apiUrl: 'https://openrouter.ai/api/v1/models'
+    },
+    latencyTracking: {
+      enabled: true,
+      bufferSize: 100,
+      outlierThresholdMs: 60000
+    }
   },
   dashboard: { enabled: false, port: 3333 },
 };
@@ -334,6 +356,24 @@ const slimclawPlugin = {
         pricing: (typeof (rawConfig.routing as Record<string, unknown>)?.pricing === 'object'
           ? (rawConfig.routing as Record<string, unknown>).pricing as Record<string, { inputPer1k: number; outputPer1k: number }>
           : undefined),
+        // Phase 3a: Dynamic pricing config
+        dynamicPricing: {
+          enabled: (rawConfig.routing as Record<string, unknown>)?.dynamicPricing
+            ? ((rawConfig.routing as Record<string, unknown>).dynamicPricing as any)?.enabled === true
+            : false,
+          ttlMs: Number(((rawConfig.routing as Record<string, unknown>)?.dynamicPricing as any)?.ttlMs) || 21600000,
+          refreshIntervalMs: Number(((rawConfig.routing as Record<string, unknown>)?.dynamicPricing as any)?.refreshIntervalMs) || 21600000,
+          timeoutMs: Number(((rawConfig.routing as Record<string, unknown>)?.dynamicPricing as any)?.timeoutMs) || 10000,
+          apiUrl: ((rawConfig.routing as Record<string, unknown>)?.dynamicPricing as any)?.apiUrl || 'https://openrouter.ai/api/v1/models',
+        },
+        // Phase 3a: Latency tracking config
+        latencyTracking: {
+          enabled: (rawConfig.routing as Record<string, unknown>)?.latencyTracking 
+            ? ((rawConfig.routing as Record<string, unknown>).latencyTracking as any)?.enabled !== false
+            : true,
+          bufferSize: Number(((rawConfig.routing as Record<string, unknown>)?.latencyTracking as any)?.bufferSize) || 100,
+          outlierThresholdMs: Number(((rawConfig.routing as Record<string, unknown>)?.latencyTracking as any)?.outlierThresholdMs) || 60000,
+        },
       },
       dashboard: {
         enabled: (rawConfig.dashboard as any)?.enabled || false,
@@ -343,6 +383,18 @@ const slimclawPlugin = {
 
     if (pluginConfig.routing.enabled) {
       api.logger.info(`SlimClaw routing enabled (observation mode) - tiers: ${JSON.stringify(pluginConfig.routing.tiers)}`);
+    }
+
+    // Initialize Phase 3a: Latency Tracker
+    if (pluginConfig.routing.latencyTracking?.enabled) {
+      const latencyConfig = {
+        ...DEFAULT_LATENCY_TRACKER_CONFIG,
+        enabled: pluginConfig.routing.latencyTracking.enabled,
+        windowSize: pluginConfig.routing.latencyTracking.bufferSize,
+        outlierThresholdMs: pluginConfig.routing.latencyTracking.outlierThresholdMs
+      };
+      latencyTracker = new LatencyTracker(latencyConfig);
+      api.logger.info('[SlimClaw] Latency tracker initialized');
     }
 
     api.logger.info(`SlimClaw registered - metrics: ${pluginConfig.metrics.enabled}, cache: ${pluginConfig.cacheBreakpoints.enabled}`);
@@ -439,19 +491,14 @@ const slimclawPlugin = {
             };
 
             // Make the routing decision using the full config structure
-            const fullConfig = {
+            const fullConfig: SlimClawConfig = {
+              ...DEFAULT_CONFIG,
               enabled: pluginConfig.enabled,
               mode: 'shadow' as const,
-              windowing: { enabled: true, maxMessages: 10, maxTokens: 4000, summarizeThreshold: 8 },
               routing: {
+                ...DEFAULT_CONFIG.routing,
                 ...pluginConfig.routing,
-                allowDowngrade: true // Add missing field
               },
-              cacheBreakpoints: { enabled: true, minContentLength: 1000 },
-              metrics: { enabled: true, logLevel: 'summary' as const, logPath: 'metrics', flushIntervalMs: 10000 },
-              dashboard: { enabled: false, port: 3333 },
-              logging: { level: 'info' as const, format: 'human' as const, fileOutput: true, logPath: 'logs', consoleOutput: true, includeStackTrace: true, colors: true },
-              caching: { enabled: true, injectBreakpoints: true, minContentLength: 1000 }
             };
 
             const routingOutput = makeRoutingDecision(
@@ -531,6 +578,9 @@ const slimclawPlugin = {
       
       api.logger.info(`[SlimClaw] Metrics updated! requests=${metrics.totalRequests}, in=${metrics.totalInputTokens}, out=${metrics.totalOutputTokens}`);
 
+      // Calculate latency for metrics
+      const latencyMs = pending.timestamp ? Date.now() - pending.timestamp : undefined;
+
       // Add to history (keep last 100)
       metrics.requestHistory.push({
         runId,
@@ -554,10 +604,27 @@ const slimclawPlugin = {
             wouldApply: pending.shadowRecommendation.wouldApply || false
           }
         } : {}),
+        // Phase 3a: Include latency in metrics
+        ...(latencyMs !== undefined ? { latencyMs } : {}),
       });
 
       if (metrics.requestHistory.length > 100) {
         metrics.requestHistory.shift();
+      }
+
+      // === LATENCY TRACKING (Phase 3a) ===
+      if (latencyTracker && latencyMs !== undefined) {
+        latencyTracker.recordLatency(model, latencyMs, outputTokens);
+        
+        if (pluginConfig.metrics.logLevel === 'verbose') {
+          const stats = latencyTracker.getLatencyStats(model);
+          if (stats) {
+            api.logger.info(
+              `[SlimClaw] Latency: ${latencyMs}ms | Model avg: ${stats.avg}ms ` +
+              `(p50: ${stats.p50}ms, p95: ${stats.p95}ms) | ${stats.tokensPerSecond.toFixed(1)} tokens/sec`
+            );
+          }
+        }
       }
 
       // Log based on level
@@ -647,6 +714,27 @@ const slimclawPlugin = {
           `• Cache breakpoints: ${pluginConfig.cacheBreakpoints.enabled ? 'ON' : 'OFF'}`,
           `• Dashboard: ${pluginConfig.dashboard.enabled ? `ON (port ${pluginConfig.dashboard.port})` : 'OFF'}`,
         ];
+
+        // Phase 3a: Latency tracking metrics
+        if (latencyTracker) {
+          const allLatencyStats = latencyTracker.getAllLatencyStats();
+          lines.push('');
+          lines.push('⚡ **Latency Tracking**');
+          lines.push(`• Models tracked: ${allLatencyStats.size}`);
+          
+          // Show top 3 fastest models
+          const sortedModels = Array.from(allLatencyStats.entries())
+            .sort(([,a], [,b]) => a.p50 - b.p50)
+            .slice(0, 3);
+          
+          if (sortedModels.length > 0) {
+            lines.push('• Fastest models:');
+            for (const [model, stats] of sortedModels) {
+              const modelName = model.split('/').pop() || model;
+              lines.push(`  - ${modelName}: ${stats.p50}ms (${stats.tokensPerSecond.toFixed(1)} tok/s)`);
+            }
+          }
+        }
 
         return {
           text: lines.join('\n'),

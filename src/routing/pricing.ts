@@ -4,6 +4,7 @@
 
 import type { ComplexityTier } from '../metrics/types.js';
 import { inferTierFromModel } from './tiers.js';
+import type { DynamicPricingCache } from './dynamic-pricing.js';
 
 /**
  * Default model pricing per 1k tokens
@@ -51,48 +52,69 @@ export const DEFAULT_MODEL_PRICING: Record<string, { inputPer1k: number, outputP
 };
 
 /**
- * Get pricing for a specific model
- * Falls back to tier-based pricing if model not found
+ * Get pricing for a model with support for dynamic cache, custom overrides, and hardcoded fallback.
+ * 
+ * Priority order:
+ * 1. Custom pricing overrides (customPricing parameter)
+ * 2. Dynamic pricing cache (if provided and enabled)
+ * 3. Hardcoded DEFAULT_MODEL_PRICING
+ * 4. Tier inference fallback
+ * 
+ * @param model - Model identifier
+ * @param customPricing - Optional custom pricing overrides
+ * @param dynamicCache - Optional dynamic pricing cache
+ * @returns Pricing data (never null)
  */
-function getModelPricing(
-  model: string, 
-  tier?: ComplexityTier,
-  pricing: Record<string, { inputPer1k: number, outputPer1k: number }> = DEFAULT_MODEL_PRICING
+export function getModelPricing(
+  model: string,
+  customPricing?: Record<string, { inputPer1k: number, outputPer1k: number }>,
+  dynamicCache?: DynamicPricingCache
 ): { inputPer1k: number, outputPer1k: number } {
-  // Try exact model match first
-  if (pricing[model]) {
-    return pricing[model];
+  // 1. Check custom pricing first (highest priority)
+  if (customPricing && customPricing[model]) {
+    return customPricing[model];
   }
-  
-  // Try tier-based fallback
-  if (tier && pricing[`tier:${tier}`]) {
-    return pricing[`tier:${tier}`];
+
+  // 2. Check dynamic cache second
+  if (dynamicCache) {
+    try {
+      const dynamicPricing = dynamicCache.getPricing(model);
+      // Dynamic cache always returns valid pricing (with hardcoded fallback internally)
+      return dynamicPricing;
+    } catch (error) {
+      // Fallback to hardcoded if dynamic cache fails
+    }
   }
-  
-  // Infer tier from model name using centralized logic
+
+  // 3. Check hardcoded pricing
+  if (DEFAULT_MODEL_PRICING[model]) {
+    return DEFAULT_MODEL_PRICING[model];
+  }
+
+  // 4. Tier inference fallback for unknown models
   const inferredTier = inferTierFromModel(model);
-  if (pricing[`tier:${inferredTier}`]) {
-    return pricing[`tier:${inferredTier}`];
+  if (DEFAULT_MODEL_PRICING[`tier:${inferredTier}`]) {
+    return DEFAULT_MODEL_PRICING[`tier:${inferredTier}`];
   }
-  
-  // Default to mid-tier pricing
-  return pricing['tier:mid'];
+
+  // 5. Final fallback to mid-tier pricing
+  return DEFAULT_MODEL_PRICING['tier:mid'];
 }
 
 /**
  * Calculate estimated routing savings as a percentage
  * @param originalTier Original complexity tier or model name
  * @param targetTier Target complexity tier
- * @param pricing Optional custom pricing map
+ * @param customPricing Optional custom pricing map
  * @returns Savings percentage (0-100, not 0-1)
  */
 export function calculateRoutingSavings(
   originalTier: string,
   targetTier: ComplexityTier,
-  pricing: Record<string, { inputPer1k: number, outputPer1k: number }> = DEFAULT_MODEL_PRICING
+  customPricing?: Record<string, { inputPer1k: number, outputPer1k: number }>
 ): number {
-  const originalPricing = getModelPricing(originalTier, undefined, pricing);
-  const targetPricing = getModelPricing(`tier:${targetTier}`, targetTier, pricing);
+  const originalPricing = getModelPricing(originalTier, customPricing);
+  const targetPricing = getModelPricing(`tier:${targetTier}`, customPricing);
   
   // Calculate average cost (input + output) for comparison
   const originalAvgCost = (originalPricing.inputPer1k + originalPricing.outputPer1k) / 2;
@@ -107,20 +129,23 @@ export function calculateRoutingSavings(
 }
 
 /**
- * Estimate model cost for given tokens
- * @param model Model name or tier
- * @param inputTokens Number of input tokens
- * @param outputTokens Number of output tokens (optional, defaults to 0)
- * @param pricing Optional custom pricing map
- * @returns Estimated cost in dollars
+ * Estimate the cost of a model request.
+ * 
+ * @param model - Model identifier
+ * @param inputTokens - Number of input tokens
+ * @param outputTokens - Number of output tokens (optional, defaults to 0)
+ * @param customPricing - Optional custom pricing overrides
+ * @param dynamicCache - Optional dynamic pricing cache
+ * @returns Estimated cost in USD
  */
 export function estimateModelCost(
   model: string,
   inputTokens: number,
   outputTokens: number = 0,
-  pricing: Record<string, { inputPer1k: number, outputPer1k: number }> = DEFAULT_MODEL_PRICING
+  customPricing?: Record<string, { inputPer1k: number, outputPer1k: number }>,
+  dynamicCache?: DynamicPricingCache
 ): number {
-  const modelPricing = getModelPricing(model, undefined, pricing);
+  const modelPricing = getModelPricing(model, customPricing, dynamicCache);
   
   const inputCost = (inputTokens / 1000) * modelPricing.inputPer1k;
   const outputCost = (outputTokens / 1000) * modelPricing.outputPer1k;
@@ -135,15 +160,15 @@ export function estimateModelCost(
  * Estimate cost per token for a model (weighted average of input/output)
  * @param model Model name
  * @param outputRatio Ratio of output to input tokens (default 0.3)
- * @param pricing Optional custom pricing map
+ * @param customPricing Optional custom pricing map
  * @returns Cost per token
  */
 export function estimateCostPerToken(
   model: string,
   outputRatio: number = 0.3,
-  pricing: Record<string, { inputPer1k: number, outputPer1k: number }> = DEFAULT_MODEL_PRICING
+  customPricing?: Record<string, { inputPer1k: number, outputPer1k: number }>
 ): number {
-  const modelPricing = getModelPricing(model, undefined, pricing);
+  const modelPricing = getModelPricing(model, customPricing);
   
   // Calculate weighted average based on typical input/output ratio
   const inputWeight = 1 / (1 + outputRatio);
