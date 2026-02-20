@@ -29,11 +29,12 @@
         "reasoning": "openai/o4-mini"
       },
       "tierProviders": {
-        "openai/*": "openrouter",
-        "google/*": "openrouter",
-        "deepseek/*": "openrouter",
-        "meta-llama/*": "openrouter",
-        "qwen/*": "openrouter"
+        "openai/gpt-4.1-nano": "openrouter",
+        "openai/o4-mini": "openrouter",
+        "google/gemini-2.5-flash": "openrouter",
+        "deepseek/deepseek-chat": "openrouter",
+        "meta-llama/llama-4-maverick": "openrouter",
+        "qwen/qwen3-coder": "openrouter"
       },
       "savingsEstimate": {
         "simple": "60-68% vs Haiku (gpt-4.1-nano)",
