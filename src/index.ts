@@ -12,6 +12,9 @@ import { classifyWithRouter } from './classifier/clawrouter-classifier.js';
 import type { Message } from './classifier/classify.js';
 import type { ComplexityTier } from './classifier/signals.js';
 
+// Shadow routing imports
+import { makeRoutingDecision, formatShadowLog } from './routing/index.js';
+
 // Dashboard exports
 export { 
   DashboardServer, 
@@ -84,6 +87,13 @@ interface RequestMetric {
   routingConfidence?: number | undefined;
   routingModel?: string | undefined;
   routingSignals?: string[] | undefined;
+  /** Shadow routing recommendation (Phase 2a) */
+  shadowRecommendation?: {
+    recommendedModel: string;
+    recommendedProvider: string;
+    savingsPercent: number;
+    wouldApply: boolean;
+  };
 }
 
 // Global metrics store
@@ -235,14 +245,29 @@ class SlimClawMetricsAdapter implements Pick<MetricsCollector, 'getAll' | 'getRe
 const metricsAdapter = new SlimClawMetricsAdapter();
 
 // Pending requests for correlation
-const pendingRequests = new Map<string, { inputTokens: number; timestamp: number; routing?: { tier: string; confidence: number; model: string; signals: string[] } | null }>();
+const pendingRequests = new Map<string, { 
+  inputTokens: number; 
+  timestamp: number; 
+  routing?: { tier: string; confidence: number; model: string; signals: string[] } | null;
+  shadowRecommendation?: import('./routing/shadow-router.js').ShadowRecommendation | undefined;
+}>();
 
 // Plugin config (loaded at register)
 let pluginConfig = {
   enabled: true,
   metrics: { enabled: true, logLevel: 'summary' },
   cacheBreakpoints: { enabled: true, minContentLength: 1000, provider: 'anthropic' },
-  routing: { enabled: false, tiers: {} as Record<string, string>, minConfidence: 0.4, pinnedModels: [] as string[] },
+  routing: { 
+    enabled: false, 
+    tiers: {} as Record<string, string>, 
+    minConfidence: 0.4, 
+    pinnedModels: [] as string[],
+    tierProviders: {} as Record<string, string>,
+    shadowLogging: true,
+    reasoningBudget: 10000,
+    openRouterHeaders: {} as Record<string, string> | undefined,
+    pricing: {} as Record<string, { inputPer1k: number; outputPer1k: number }> | undefined
+  },
   dashboard: { enabled: false, port: 3333 },
 };
 
@@ -298,6 +323,17 @@ const slimclawPlugin = {
         pinnedModels: Array.isArray((rawConfig.routing as Record<string, unknown>)?.pinnedModels)
           ? (rawConfig.routing as Record<string, unknown>).pinnedModels as string[]
           : [],
+        tierProviders: (typeof (rawConfig.routing as Record<string, unknown>)?.tierProviders === 'object'
+          ? (rawConfig.routing as Record<string, unknown>).tierProviders as Record<string, string>
+          : {}),
+        shadowLogging: (rawConfig.routing as Record<string, unknown>)?.shadowLogging !== false,
+        reasoningBudget: Number((rawConfig.routing as Record<string, unknown>)?.reasoningBudget) || 10000,
+        openRouterHeaders: (typeof (rawConfig.routing as Record<string, unknown>)?.openRouterHeaders === 'object'
+          ? (rawConfig.routing as Record<string, unknown>).openRouterHeaders as Record<string, string>
+          : undefined),
+        pricing: (typeof (rawConfig.routing as Record<string, unknown>)?.pricing === 'object'
+          ? (rawConfig.routing as Record<string, unknown>).pricing as Record<string, { inputPer1k: number; outputPer1k: number }>
+          : undefined),
       },
       dashboard: {
         enabled: (rawConfig.dashboard as any)?.enabled || false,
@@ -389,10 +425,62 @@ const slimclawPlugin = {
           }
         }
 
+        // === SHADOW ROUTING DECISION (Phase 2a: Shadow Mode) ===
+        let shadowRecommendation = null;
+        if (pluginConfig.routing.enabled && pluginConfig.routing.shadowLogging && routingResult) {
+          try {
+            // Convert the routingResult to the expected classification format
+            const classification = {
+              tier: routingResult.tier as ComplexityTier,
+              confidence: routingResult.confidence,
+              reason: 'Classification based on request complexity',
+              scores: { simple: 0, mid: 0, complex: 0, reasoning: 0, [routingResult.tier]: routingResult.confidence },
+              signals: routingResult.signals
+            };
+
+            // Make the routing decision using the full config structure
+            const fullConfig = {
+              enabled: pluginConfig.enabled,
+              mode: 'shadow' as const,
+              windowing: { enabled: true, maxMessages: 10, maxTokens: 4000, summarizeThreshold: 8 },
+              routing: {
+                ...pluginConfig.routing,
+                allowDowngrade: true // Add missing field
+              },
+              cacheBreakpoints: { enabled: true, minContentLength: 1000 },
+              metrics: { enabled: true, logLevel: 'summary' as const, logPath: 'metrics', flushIntervalMs: 10000 },
+              dashboard: { enabled: false, port: 3333 },
+              logging: { level: 'info' as const, format: 'human' as const, fileOutput: true, logPath: 'logs', consoleOutput: true, includeStackTrace: true, colors: true },
+              caching: { enabled: true, injectBreakpoints: true, minContentLength: 1000 }
+            };
+
+            const routingOutput = makeRoutingDecision(
+              classification,
+              fullConfig,
+              {
+                originalModel: (event as any).model || 'unknown',
+                headers: (event as any).headers || {}
+              },
+              runId
+            );
+            
+            shadowRecommendation = routingOutput.shadow;
+            
+            // Log shadow recommendation
+            const logLevel = pluginConfig.metrics?.logLevel === 'verbose' ? 'debug' : 'info';
+            const shadowLog = formatShadowLog(routingOutput.shadow, logLevel);
+            api.logger.info(shadowLog);
+            
+          } catch (error) {
+            api.logger.info(`[SlimClaw] Shadow routing failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+
         pendingRequests.set(runId, {
           inputTokens: estimatedTokens,
           timestamp: Date.now(),
           routing: routingResult,
+          shadowRecommendation: shadowRecommendation ?? undefined,
         });
         api.logger.info(`[SlimClaw] llm_input: STORED runId=${runId}, mapSize=${pendingRequests.size}`);
       } catch (err) {
@@ -457,6 +545,15 @@ const slimclawPlugin = {
         routingConfidence: pending.routing?.confidence,
         routingModel: pending.routing?.model,
         routingSignals: pending.routing?.signals,
+        // Include shadow recommendation in metrics (only if exists)
+        ...(pending.shadowRecommendation ? {
+          shadowRecommendation: {
+            recommendedModel: pending.shadowRecommendation.recommendedModel,
+            recommendedProvider: pending.shadowRecommendation.recommendedProvider?.provider || 'unknown',
+            savingsPercent: pending.shadowRecommendation.costDelta?.savingsPercent || 0,
+            wouldApply: pending.shadowRecommendation.wouldApply || false
+          }
+        } : {}),
       });
 
       if (metrics.requestHistory.length > 100) {

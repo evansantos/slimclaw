@@ -37,7 +37,11 @@ export const SlimClawConfigSchema = z.object({
       reasoning: "anthropic/claude-opus-4-20250514",
     }),
     /** Provider mapping for cross-provider routing. Maps model prefix patterns to provider names. */
-    tierProviders: z.record(z.string()).optional(),
+    tierProviders: z.record(z.string().min(1), z.string()).optional(),
+    /** OpenRouter-specific headers configuration */
+    openRouterHeaders: z.record(z.string()).optional(),
+    /** Enable shadow routing logging (Phase 2a) */
+    shadowLogging: z.boolean().default(true),
     /** Thinking budget for reasoning tier models */
     reasoningBudget: z.number().int().default(10000),
     /** Custom model pricing overrides (per 1k tokens). Merges with built-in defaults.
@@ -109,6 +113,7 @@ export const DEFAULT_CONFIG: SlimClawConfig = {
       complex: "anthropic/claude-opus-4-20250514",
       reasoning: "anthropic/claude-opus-4-20250514",
     },
+    shadowLogging: true,
     reasoningBudget: 10000,
   },
   caching: {
