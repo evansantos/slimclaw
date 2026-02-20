@@ -4,6 +4,16 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 
 // ============================================================
+// Validation Helpers
+// ============================================================
+
+// Validate that variant weights sum to 100
+const validateVariantWeights = (variants: { weight: number }[]) => {
+  const totalWeight = variants.reduce((sum, v) => sum + v.weight, 0);
+  return totalWeight === 100;
+};
+
+// ============================================================
 // Zod Schema for SlimClaw Configuration
 // ============================================================
 
@@ -73,6 +83,48 @@ export const SlimClawConfigSchema = z.object({
       /** Ignore latencies above this threshold (ms) */
       outlierThresholdMs: z.number().min(1000).default(60000), // Min 1 second, default 60 seconds
     }).default({}),
+    /** Budget enforcement configuration (Phase 3b) */
+    budget: z.object({
+      /** Enable budget enforcement */
+      enabled: z.boolean().default(false),
+      /** Daily spending limits per tier (USD) */
+      daily: z.record(z.number().min(0)).default({}),
+      /** Weekly spending limits per tier (USD) */
+      weekly: z.record(z.number().min(0)).default({}),
+      /** Alert threshold as percentage of limit (0-100) */
+      alertThresholdPercent: z.number().min(0).max(100).default(80),
+      /** Enforcement action when budget exceeded */
+      enforcementAction: z.enum(['downgrade', 'block', 'alert-only']).default('alert-only'),
+    }).optional(),
+    /** A/B testing configuration (Phase 3b) */
+    abTesting: z.object({
+      /** Enable A/B testing */
+      enabled: z.boolean().default(false),
+      /** Active experiments */
+      experiments: z.array(z.object({
+        /** Unique experiment identifier */
+        id: z.string(),
+        /** Human-readable experiment name */
+        name: z.string(),
+        /** Tier this experiment applies to */
+        tier: z.string(),
+        /** Experiment variants */
+        variants: z.array(z.object({
+          /** Variant identifier */
+          id: z.string(),
+          /** Model to use for this variant */
+          model: z.string(),
+          /** Weight for assignment (0-100) */
+          weight: z.number().min(0).max(100),
+        })).min(1), // At least one variant required
+        /** When experiment should end (optional timestamp) */
+        endAt: z.number().optional(),
+        /** Minimum samples before significance calculation */
+        minSamples: z.number().int().min(1).default(100),
+      }).refine(exp => validateVariantWeights(exp.variants), {
+        message: "Variant weights must sum to 100"
+      })).default([]),
+    }).optional(),
   }).default({}),
 
   caching: z.object({
@@ -149,6 +201,18 @@ export const DEFAULT_CONFIG: SlimClawConfig = {
       enabled: true,
       bufferSize: 100,
       outlierThresholdMs: 60000, // 60 seconds
+    },
+    // Phase 3b features with defaults
+    budget: {
+      enabled: false,
+      daily: {},
+      weekly: {},
+      alertThresholdPercent: 80,
+      enforcementAction: 'alert-only' as const,
+    },
+    abTesting: {
+      enabled: false,
+      experiments: [],
     },
   },
   caching: {

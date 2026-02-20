@@ -11,13 +11,17 @@ import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { classifyWithRouter } from './classifier/clawrouter-classifier.js';
 import type { Message } from './classifier/classify.js';
 import type { ComplexityTier } from './classifier/signals.js';
-import { DEFAULT_CONFIG, type SlimClawConfig } from './config.js';
+import { DEFAULT_CONFIG, SlimClawConfigSchema, type SlimClawConfig } from './config.js';
 
 // Shadow routing imports
 import { makeRoutingDecision, formatShadowLog } from './routing/index.js';
 
 // Phase 3a imports
 import { LatencyTracker, DEFAULT_LATENCY_TRACKER_CONFIG } from './routing/latency-tracker.js';
+
+// Phase 3b imports
+import { BudgetTracker, DEFAULT_BUDGET_CONFIG } from './routing/budget-tracker.js';
+import { ABTestManager } from './routing/ab-testing.js';
 
 // Dashboard exports
 export { 
@@ -100,6 +104,19 @@ interface RequestMetric {
   };
   /** Request latency in milliseconds (Phase 3a) */
   latencyMs?: number;
+  /** Budget status (Phase 3b) */
+  budgetStatus?: {
+    tier: string;
+    dailyRemaining: number;
+    weeklyRemaining: number;
+    alertTriggered: boolean;
+  };
+  /** A/B test assignment (Phase 3b) */
+  abTestAssignment?: {
+    experimentId: string;
+    variantId: string;
+    variantModel: string;
+  };
 }
 
 // Global metrics store
@@ -253,12 +270,17 @@ const metricsAdapter = new SlimClawMetricsAdapter();
 // Phase 3a: Global latency tracker instance  
 let latencyTracker: LatencyTracker | null = null;
 
+// Phase 3b: Global instances
+let budgetTracker: BudgetTracker | null = null;
+let abTestManager: ABTestManager | null = null;
+
 // Pending requests for correlation
 const pendingRequests = new Map<string, { 
   inputTokens: number; 
   timestamp: number; 
   routing?: { tier: string; confidence: number; model: string; signals: string[] } | null;
   shadowRecommendation?: import('./routing/shadow-router.js').ShadowRecommendation | undefined;
+  routingOutput?: import('./routing/routing-decision.js').RoutingOutput | undefined;
 }>();
 
 // Plugin config (loaded at register)
@@ -288,6 +310,18 @@ let pluginConfig = {
       enabled: true,
       bufferSize: 100,
       outlierThresholdMs: 60000
+    },
+    // Phase 3b additions
+    budget: {
+      enabled: false,
+      daily: {} as Record<string, number>,
+      weekly: {} as Record<string, number>,
+      alertThresholdPercent: 80,
+      enforcementAction: 'alert-only' as const
+    },
+    abTesting: {
+      enabled: false,
+      experiments: [] as any[]
     }
   },
   dashboard: { enabled: false, port: 3333 },
@@ -299,6 +333,25 @@ let pluginConfig = {
 function estimateTokens(text: string): number {
   // ~4 chars per token for English, ~2-3 for code
   return Math.ceil(text.length / 3.5);
+}
+
+/**
+ * Estimate model cost for budget tracking
+ */
+function estimateModelCost(model: string, inputTokens: number, outputTokens: number): number {
+  // Rough cost estimates per 1k tokens (in USD)
+  const costPer1k = (() => {
+    if (model.includes('gpt-4')) return 0.03;  // GPT-4 ~$30/1M tokens
+    if (model.includes('gpt-3.5')) return 0.002; // GPT-3.5 ~$2/1M tokens  
+    if (model.includes('claude-3-haiku')) return 0.00025; // Haiku ~$0.25/1M tokens
+    if (model.includes('claude-3-sonnet') || model.includes('claude-sonnet')) return 0.003; // Sonnet ~$3/1M tokens
+    if (model.includes('claude-3-opus') || model.includes('claude-opus')) return 0.015; // Opus ~$15/1M tokens
+    if (model.includes('gemini')) return 0.001; // Gemini ~$1/1M tokens
+    return 0.002; // Default fallback
+  })();
+  
+  const totalTokens = inputTokens + outputTokens;
+  return (totalTokens / 1000) * costPer1k;
 }
 
 // Plugin definition
@@ -325,59 +378,34 @@ const slimclawPlugin = {
     
     // Merge: file config takes precedence, then api.pluginConfig
     const rawConfig = { ...fileConfig, ...(api.pluginConfig as Record<string, unknown> || {}) };
+    
+    // Use SlimClawConfigSchema.parse() to get typed config directly
+    const parseResult = SlimClawConfigSchema.safeParse(rawConfig);
+    
+    let typedConfig: SlimClawConfig;
+    if (parseResult.success) {
+      typedConfig = parseResult.data;
+    } else {
+      api.logger.info(`[SlimClaw] Config validation failed, using defaults: ${parseResult.error.message}`);
+      typedConfig = DEFAULT_CONFIG;
+    }
+    
+    // Map to pluginConfig format for backward compatibility
     pluginConfig = {
-      enabled: rawConfig.enabled !== false,
+      enabled: typedConfig.enabled,
       metrics: {
-        enabled: (rawConfig.metrics as any)?.enabled !== false,
-        logLevel: (rawConfig.metrics as any)?.logLevel || 'summary',
+        enabled: typedConfig.metrics.enabled,
+        logLevel: typedConfig.logging.level === 'debug' ? 'verbose' : 'summary', // Map log levels
       },
       cacheBreakpoints: {
-        enabled: (rawConfig.cacheBreakpoints as any)?.enabled !== false,
-        minContentLength: (rawConfig.cacheBreakpoints as any)?.minContentLength || 1000,
-        provider: (rawConfig.cacheBreakpoints as any)?.provider || 'anthropic',
+        enabled: typedConfig.caching.enabled,
+        minContentLength: typedConfig.caching.minContentLength,
+        provider: 'anthropic', // Fixed provider
       },
-      routing: {
-        enabled: (rawConfig.routing as Record<string, unknown>)?.enabled === true,
-        tiers: (typeof (rawConfig.routing as Record<string, unknown>)?.tiers === 'object' 
-          ? (rawConfig.routing as Record<string, unknown>).tiers as Record<string, string> 
-          : {}),
-        minConfidence: Number((rawConfig.routing as Record<string, unknown>)?.minConfidence) || 0.4,
-        pinnedModels: Array.isArray((rawConfig.routing as Record<string, unknown>)?.pinnedModels)
-          ? (rawConfig.routing as Record<string, unknown>).pinnedModels as string[]
-          : [],
-        tierProviders: (typeof (rawConfig.routing as Record<string, unknown>)?.tierProviders === 'object'
-          ? (rawConfig.routing as Record<string, unknown>).tierProviders as Record<string, string>
-          : {}),
-        shadowLogging: (rawConfig.routing as Record<string, unknown>)?.shadowLogging !== false,
-        reasoningBudget: Number((rawConfig.routing as Record<string, unknown>)?.reasoningBudget) || 10000,
-        openRouterHeaders: (typeof (rawConfig.routing as Record<string, unknown>)?.openRouterHeaders === 'object'
-          ? (rawConfig.routing as Record<string, unknown>).openRouterHeaders as Record<string, string>
-          : undefined),
-        pricing: (typeof (rawConfig.routing as Record<string, unknown>)?.pricing === 'object'
-          ? (rawConfig.routing as Record<string, unknown>).pricing as Record<string, { inputPer1k: number; outputPer1k: number }>
-          : undefined),
-        // Phase 3a: Dynamic pricing config
-        dynamicPricing: {
-          enabled: (rawConfig.routing as Record<string, unknown>)?.dynamicPricing
-            ? ((rawConfig.routing as Record<string, unknown>).dynamicPricing as any)?.enabled === true
-            : false,
-          ttlMs: Number(((rawConfig.routing as Record<string, unknown>)?.dynamicPricing as any)?.ttlMs) || 21600000,
-          refreshIntervalMs: Number(((rawConfig.routing as Record<string, unknown>)?.dynamicPricing as any)?.refreshIntervalMs) || 21600000,
-          timeoutMs: Number(((rawConfig.routing as Record<string, unknown>)?.dynamicPricing as any)?.timeoutMs) || 10000,
-          apiUrl: ((rawConfig.routing as Record<string, unknown>)?.dynamicPricing as any)?.apiUrl || 'https://openrouter.ai/api/v1/models',
-        },
-        // Phase 3a: Latency tracking config
-        latencyTracking: {
-          enabled: (rawConfig.routing as Record<string, unknown>)?.latencyTracking 
-            ? ((rawConfig.routing as Record<string, unknown>).latencyTracking as any)?.enabled !== false
-            : true,
-          bufferSize: Number(((rawConfig.routing as Record<string, unknown>)?.latencyTracking as any)?.bufferSize) || 100,
-          outlierThresholdMs: Number(((rawConfig.routing as Record<string, unknown>)?.latencyTracking as any)?.outlierThresholdMs) || 60000,
-        },
-      },
+      routing: typedConfig.routing,
       dashboard: {
-        enabled: (rawConfig.dashboard as any)?.enabled || false,
-        port: (rawConfig.dashboard as any)?.port || 3333,
+        enabled: false, // Dashboard config not in new schema yet
+        port: 3333,
       },
     };
 
@@ -395,6 +423,30 @@ const slimclawPlugin = {
       };
       latencyTracker = new LatencyTracker(latencyConfig);
       api.logger.info('[SlimClaw] Latency tracker initialized');
+    }
+
+    // Phase 3b: Budget Tracker
+    if (pluginConfig.routing.budget?.enabled) {
+      const budgetConfig = {
+        ...DEFAULT_BUDGET_CONFIG,
+        enabled: pluginConfig.routing.budget.enabled,
+        daily: pluginConfig.routing.budget.daily,
+        weekly: pluginConfig.routing.budget.weekly,
+        alertThresholdPercent: pluginConfig.routing.budget.alertThresholdPercent,
+        enforcementAction: pluginConfig.routing.budget.enforcementAction
+      };
+      budgetTracker = new BudgetTracker(budgetConfig);
+      api.logger.info('[SlimClaw] Budget tracker initialized');
+    }
+    
+    // Phase 3b: A/B Testing Manager
+    if (pluginConfig.routing.abTesting?.enabled && pluginConfig.routing.abTesting.experiments.length > 0) {
+      try {
+        abTestManager = new ABTestManager(pluginConfig.routing.abTesting.experiments);
+        api.logger.info(`[SlimClaw] A/B testing manager initialized with ${pluginConfig.routing.abTesting.experiments.length} experiments`);
+      } catch (error) {
+        api.logger.info(`[SlimClaw] A/B testing initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
 
     api.logger.info(`SlimClaw registered - metrics: ${pluginConfig.metrics.enabled}, cache: ${pluginConfig.cacheBreakpoints.enabled}`);
@@ -479,6 +531,7 @@ const slimclawPlugin = {
 
         // === SHADOW ROUTING DECISION (Phase 2a: Shadow Mode) ===
         let shadowRecommendation = null;
+        let fullRoutingOutput;
         if (pluginConfig.routing.enabled && pluginConfig.routing.shadowLogging && routingResult) {
           try {
             // Convert the routingResult to the expected classification format
@@ -508,10 +561,17 @@ const slimclawPlugin = {
                 originalModel: (event as any).model || 'unknown',
                 headers: (event as any).headers || {}
               },
-              runId
+              runId,
+              {
+                ...(budgetTracker ? { budgetTracker } : {}),
+                ...(abTestManager ? { abTestManager } : {})
+              }
             );
             
             shadowRecommendation = routingOutput.shadow;
+            
+            // Store full routing output for Phase 3b tracking
+            fullRoutingOutput = routingOutput;
             
             // Log shadow recommendation
             const logLevel = pluginConfig.metrics?.logLevel === 'verbose' ? 'debug' : 'info';
@@ -528,6 +588,7 @@ const slimclawPlugin = {
           timestamp: Date.now(),
           routing: routingResult,
           shadowRecommendation: shadowRecommendation ?? undefined,
+          routingOutput: typeof fullRoutingOutput !== 'undefined' ? fullRoutingOutput : undefined,
         });
         api.logger.info(`[SlimClaw] llm_input: STORED runId=${runId}, mapSize=${pendingRequests.size}`);
       } catch (err) {
@@ -624,6 +685,43 @@ const slimclawPlugin = {
               `(p50: ${stats.p50}ms, p95: ${stats.p95}ms) | ${stats.tokensPerSecond.toFixed(1)} tokens/sec`
             );
           }
+        }
+      }
+
+      // === BUDGET TRACKING (Phase 3b) ===
+      if (budgetTracker && pending.routing?.tier && latencyMs !== undefined) {
+        // Estimate cost for budget tracking
+        const estimatedCost = estimateModelCost(model, inputTokens, outputTokens);
+        if (estimatedCost > 0) {
+          budgetTracker.record(pending.routing.tier, estimatedCost);
+          
+          if (pluginConfig.metrics.logLevel === 'verbose') {
+            const budgetStatus = budgetTracker.check(pending.routing.tier);
+            api.logger.info(
+              `[SlimClaw] Budget: ${pending.routing.tier} tier spent $${estimatedCost.toFixed(4)} | ` +
+              `Daily remaining: $${budgetStatus.dailyRemaining.toFixed(2)} | ` +
+              `Alert: ${budgetStatus.alertTriggered ? 'YES' : 'NO'}`
+            );
+          }
+        }
+      }
+
+      // === A/B TESTING RESULTS (Phase 3b) ===
+      if (abTestManager && pending.routingOutput?.abAssignment && latencyMs !== undefined) {
+        // Record A/B test outcome
+        const estimatedCost = estimateModelCost(model, inputTokens, outputTokens);
+        abTestManager.recordOutcome(runId, {
+          latencyMs,
+          cost: estimatedCost,
+          outputTokens
+        });
+        
+        if (pluginConfig.metrics.logLevel === 'verbose') {
+          api.logger.info(
+            `[SlimClaw] A/B result recorded: ${pending.routingOutput.abAssignment.experimentId} / ` +
+            `${pending.routingOutput.abAssignment.variant.id} | ` +
+            `${latencyMs}ms, $${estimatedCost.toFixed(4)}, ${outputTokens} tokens`
+          );
         }
       }
 
@@ -733,6 +831,39 @@ const slimclawPlugin = {
               const modelName = model.split('/').pop() || model;
               lines.push(`  - ${modelName}: ${stats.p50}ms (${stats.tokensPerSecond.toFixed(1)} tok/s)`);
             }
+          }
+        }
+
+        // Phase 3b metrics
+        if (budgetTracker) {
+          const budgetStatus = budgetTracker.getStatus();
+          lines.push('');
+          lines.push('💰 **Budget Enforcement**');
+          lines.push(`• Tiers tracked: ${budgetStatus.size}`);
+          
+          for (const [tier, status] of budgetStatus.entries()) {
+            const dailyPercent = status.daily.limit > 0 ? status.daily.percent : 0;
+            const weeklyPercent = status.weekly.limit > 0 ? status.weekly.percent : 0;
+            lines.push(
+              `  - ${tier}: $${status.daily.spent}/$${status.daily.limit} daily (${dailyPercent}%), ` +
+              `$${status.weekly.spent}/$${status.weekly.limit} weekly (${weeklyPercent}%)`
+            );
+          }
+        }
+
+        if (abTestManager) {
+          const experiments = abTestManager.listExperiments();
+          const activeExperiments = experiments.filter(exp => exp.status === 'active');
+          
+          lines.push('');
+          lines.push('🧪 **A/B Testing**');
+          lines.push(`• Total experiments: ${experiments.length}`);
+          lines.push(`• Active experiments: ${activeExperiments.length}`);
+          
+          for (const exp of activeExperiments.slice(0, 3)) { // Show top 3
+            const results = abTestManager.getResults(exp.id);
+            const totalSamples = results?.variants.reduce((sum, v) => sum + v.count, 0) || 0;
+            lines.push(`  - ${exp.name}: ${totalSamples} samples${results?.significant ? ' (significant)' : ''}`);
           }
         }
 
