@@ -7,9 +7,13 @@ vi.mock('../overrides.js', () => ({
   processOverrides: vi.fn()
 }));
 
-vi.mock('../tiers.js', () => ({
-  getTierModel: vi.fn()
-}));
+vi.mock('../tiers.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    getTierModel: vi.fn()
+  };
+});
 
 vi.mock('../../classifier/classify.js', () => ({
   classifyComplexity: vi.fn(),

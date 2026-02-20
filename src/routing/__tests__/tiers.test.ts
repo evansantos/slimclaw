@@ -148,4 +148,88 @@ describe('tiers', () => {
       expect(inferTierFromModel('')).toBe('complex');
     });
   });
+
+  describe('inferTierFromModel - Cross-Provider Models', () => {
+    describe('Simple tier models', () => {
+      it('should infer simple tier for gpt-4.1-nano', () => {
+        expect(inferTierFromModel('gpt-4.1-nano')).toBe('simple');
+      });
+
+      it('should infer simple tier for gpt-4o-mini', () => {
+        expect(inferTierFromModel('gpt-4o-mini')).toBe('simple');
+      });
+
+      it('should infer simple tier for deepseek-v3', () => {
+        expect(inferTierFromModel('deepseek-v3')).toBe('simple');
+      });
+    });
+
+    describe('Mid tier models', () => {
+      it('should infer mid tier for gpt-4.1-mini', () => {
+        expect(inferTierFromModel('gpt-4.1-mini')).toBe('mid');
+      });
+
+      it('should infer mid tier for gemini-2.5-flash', () => {
+        expect(inferTierFromModel('gemini-2.5-flash')).toBe('mid');
+      });
+
+      it('should infer mid tier for llama-4-maverick', () => {
+        expect(inferTierFromModel('llama-4-maverick')).toBe('mid');
+      });
+
+      it('should infer mid tier for qwen3-coder', () => {
+        expect(inferTierFromModel('qwen3-coder')).toBe('mid');
+      });
+    });
+
+    describe('Complex tier models', () => {
+      it('should infer complex tier for gpt-4.1 (not mini/nano)', () => {
+        expect(inferTierFromModel('gpt-4.1')).toBe('complex');
+      });
+
+      it('should infer complex tier for gpt-4 (not turbo)', () => {
+        expect(inferTierFromModel('gpt-4')).toBe('complex');
+      });
+
+      it('should NOT infer complex for gpt-4-turbo', () => {
+        expect(inferTierFromModel('gpt-4-turbo')).toBe('mid'); // Should remain mid
+      });
+    });
+
+    describe('Reasoning tier models', () => {
+      it('should infer reasoning tier for o3', () => {
+        expect(inferTierFromModel('o3')).toBe('reasoning');
+      });
+
+      it('should infer reasoning tier for o4-mini', () => {
+        expect(inferTierFromModel('o4-mini')).toBe('reasoning');
+      });
+
+      it('should infer reasoning tier for deepseek-r1', () => {
+        expect(inferTierFromModel('deepseek-r1')).toBe('reasoning');
+      });
+
+      it('should infer reasoning tier for gemini-2.5-pro', () => {
+        expect(inferTierFromModel('gemini-2.5-pro')).toBe('reasoning');
+      });
+    });
+
+    describe('Edge cases for cross-provider models', () => {
+      it('should handle model names with provider prefixes', () => {
+        expect(inferTierFromModel('openai/gpt-4.1-nano')).toBe('simple');
+        expect(inferTierFromModel('anthropic/deepseek-v3')).toBe('simple');
+        expect(inferTierFromModel('google/gemini-2.5-flash')).toBe('mid');
+        expect(inferTierFromModel('meta/llama-4-maverick')).toBe('mid');
+        expect(inferTierFromModel('openai/o3')).toBe('reasoning');
+        expect(inferTierFromModel('deepseek/deepseek-r1')).toBe('reasoning');
+      });
+
+      it('should handle case-insensitive matching', () => {
+        expect(inferTierFromModel('GPT-4.1-NANO')).toBe('simple');
+        expect(inferTierFromModel('DeepSeek-V3')).toBe('simple');
+        expect(inferTierFromModel('GEMINI-2.5-FLASH')).toBe('mid');
+        expect(inferTierFromModel('O3')).toBe('reasoning');
+      });
+    });
+  });
 });

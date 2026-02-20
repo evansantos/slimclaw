@@ -11,6 +11,8 @@ import {
   getTierModel, 
   isTierReasoning, 
   getThinkingBudget,
+  inferTierFromModel,
+  TIER_RANKS,
   type ComplexityTier 
 } from './tiers.js';
 import { 
@@ -167,8 +169,9 @@ function createDecision(params: {
 }
 
 /**
- * Simple heuristic to check if switching from one model to another is a downgrade
- * This is a best-effort check based on common model naming patterns
+ * Tier-based model downgrade detection (Task 3)
+ * Uses inferTierFromModel() to get tiers for both models and compares using tier ranks
+ * Downgrade = target tier rank < source tier rank
  */
 function isModelDowngrade(fromModel: string, toModel: string): boolean {
   // If models are the same, no downgrade
@@ -176,38 +179,11 @@ function isModelDowngrade(fromModel: string, toModel: string): boolean {
     return false;
   }
   
-  const fromLower = fromModel.toLowerCase();
-  const toLower = toModel.toLowerCase();
+  // Get tiers for both models
+  const fromTier = inferTierFromModel(fromModel);
+  const toTier = inferTierFromModel(toModel);
   
-  // Claude model hierarchy: opus > sonnet > haiku
-  const claudeHierarchy = ['opus', 'sonnet', 'haiku'];
-  
-  let fromRank = -1;
-  let toRank = -1;
-  
-  for (let i = 0; i < claudeHierarchy.length; i++) {
-    if (fromLower.includes(claudeHierarchy[i])) {
-      fromRank = i;
-    }
-    if (toLower.includes(claudeHierarchy[i])) {
-      toRank = i;
-    }
-  }
-  
-  // If both models are in Claude hierarchy, compare ranks (lower index = higher tier)
-  if (fromRank !== -1 && toRank !== -1) {
-    return toRank > fromRank;
-  }
-  
-  // GPT model checks
-  if (fromLower.includes('gpt-4') && !toLower.includes('gpt-4')) {
-    return true; // Any non-GPT4 is a downgrade from GPT-4
-  }
-  
-  if (fromLower.includes('gpt-4-turbo') && toLower.includes('gpt-3.5')) {
-    return true; // GPT-3.5 is downgrade from GPT-4-turbo
-  }
-  
-  // Conservative approach: if we can't determine, assume no downgrade
-  return false;
+  // Compare using tier ranks: simple=1, mid=2, complex=3, reasoning=4
+  // Downgrade = target tier rank < source tier rank
+  return TIER_RANKS[toTier] < TIER_RANKS[fromTier];
 }

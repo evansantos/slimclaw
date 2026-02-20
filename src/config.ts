@@ -36,6 +36,8 @@ export const SlimClawConfigSchema = z.object({
       complex: "anthropic/claude-opus-4-20250514",
       reasoning: "anthropic/claude-opus-4-20250514",
     }),
+    /** Provider mapping for cross-provider routing. Maps model prefix patterns to provider names. */
+    tierProviders: z.record(z.string()).optional(),
     /** Thinking budget for reasoning tier models */
     reasoningBudget: z.number().int().default(10000),
     /** Custom model pricing overrides (per 1k tokens). Merges with built-in defaults.

@@ -3,6 +3,7 @@
  */
 
 import type { ComplexityTier } from '../metrics/types.js';
+import { inferTierFromModel } from './tiers.js';
 
 /**
  * Default model pricing per 1k tokens
@@ -14,11 +15,33 @@ export const DEFAULT_MODEL_PRICING: Record<string, { inputPer1k: number, outputP
   'anthropic/claude-sonnet-4-20250514': { inputPer1k: 0.003, outputPer1k: 0.015 },
   'anthropic/claude-opus-4-20250514': { inputPer1k: 0.015, outputPer1k: 0.075 },
   
-  // OpenAI models
+  // OpenAI models (existing)
   'openai/gpt-3.5-turbo': { inputPer1k: 0.0005, outputPer1k: 0.0015 },
   'openai/gpt-4': { inputPer1k: 0.01, outputPer1k: 0.03 },
   'openai/gpt-4-turbo': { inputPer1k: 0.01, outputPer1k: 0.03 },
   'openai/gpt-4o': { inputPer1k: 0.005, outputPer1k: 0.015 },
+  
+  // OpenAI models (cross-provider)
+  'openai/gpt-4.1-nano': { inputPer1k: 0.0001, outputPer1k: 0.0004 },
+  'openai/gpt-4.1-mini': { inputPer1k: 0.0004, outputPer1k: 0.0016 },
+  'openai/gpt-4.1': { inputPer1k: 0.002, outputPer1k: 0.008 },
+  'openai/gpt-4o-mini': { inputPer1k: 0.00015, outputPer1k: 0.0006 },
+  'openai/o4-mini': { inputPer1k: 0.0011, outputPer1k: 0.0044 },
+  'openai/o3': { inputPer1k: 0.002, outputPer1k: 0.008 },
+  
+  // Google models (cross-provider)
+  'google/gemini-2.5-flash': { inputPer1k: 0.0003, outputPer1k: 0.0025 },
+  'google/gemini-2.5-pro': { inputPer1k: 0.00125, outputPer1k: 0.01 },
+  
+  // DeepSeek models (cross-provider)
+  'deepseek/deepseek-r1-0528': { inputPer1k: 0.0004, outputPer1k: 0.00175 },
+  'deepseek/deepseek-v3.2': { inputPer1k: 0.00026, outputPer1k: 0.00038 },
+  
+  // Meta LLaMA models (cross-provider)
+  'meta-llama/llama-4-maverick': { inputPer1k: 0.00015, outputPer1k: 0.0006 },
+  
+  // Qwen models (cross-provider)
+  'qwen/qwen3-coder': { inputPer1k: 0.00022, outputPer1k: 0.001 },
   
   // Default fallback rates by tier
   'tier:simple': { inputPer1k: 0.00025, outputPer1k: 0.00125 },
@@ -46,23 +69,10 @@ function getModelPricing(
     return pricing[`tier:${tier}`];
   }
   
-  // Infer from model name patterns
-  const lowerModel = model.toLowerCase();
-  
-  if (lowerModel.includes('haiku')) {
-    return pricing['tier:simple'];
-  }
-  if (lowerModel.includes('sonnet')) {
-    return pricing['tier:mid'];
-  }
-  if (lowerModel.includes('opus')) {
-    return pricing['tier:complex'];
-  }
-  if (lowerModel.includes('gpt-3.5')) {
-    return pricing['tier:simple'];
-  }
-  if (lowerModel.includes('gpt-4')) {
-    return pricing['tier:complex'];
+  // Infer tier from model name using centralized logic
+  const inferredTier = inferTierFromModel(model);
+  if (pricing[`tier:${inferredTier}`]) {
+    return pricing[`tier:${inferredTier}`];
   }
   
   // Default to mid-tier pricing

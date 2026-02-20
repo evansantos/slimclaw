@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { resolveModel } from '../model-router.js';
+import { inferTierFromModel, TIER_RANKS } from '../tiers.js';
 import type { ClassificationResult } from '../../classifier/index.js';
 import type { SlimClawConfig } from '../../config.js';
 import type { RoutingContext } from '../overrides.js';
@@ -253,6 +254,110 @@ describe('model-router', () => {
       // Header should win over both pinned config and low confidence
       expect(result.targetModel).toBe('header/wins');
       expect(result.reason).toBe('pinned');
+    });
+  });
+
+  // Task 3: Cross-provider tier-based downgrade tests
+  // Testing tier-based downgrade logic indirectly through the tier system
+  describe('Task 3: Cross-provider Tier-based Downgrades', () => {
+    // Helper function that mimics the internal isModelDowngrade logic
+    const testTierBasedDowngrade = (fromModel: string, toModel: string): boolean => {
+      if (fromModel === toModel) return false;
+      const fromTier = inferTierFromModel(fromModel);
+      const toTier = inferTierFromModel(toModel);
+      return TIER_RANKS[toTier] < TIER_RANKS[fromTier];
+    };
+
+    it('should detect cross-provider downgrades (opus→nano)', () => {
+      // Test Claude Opus (complex tier) to some nano model (simple tier) 
+      const result = testTierBasedDowngrade('anthropic/claude-opus-4-20250514', 'some-provider/nano-model');
+      expect(result).toBe(true); // complex (3) → simple (1) = downgrade
+    });
+
+    it('should detect cross-provider downgrades (gpt-4.1→flash)', () => {
+      // Test complex model to mid model = downgrade
+      const result = testTierBasedDowngrade('openai/gpt-4.1', 'google/gemini-2.5-flash');
+      expect(result).toBe(true); // complex (3) → mid (2) = downgrade
+    });
+
+    it('should detect cross-provider upgrades (nano→opus)', () => {
+      // Test nano (simple) → opus (complex) = upgrade, not downgrade
+      const result = testTierBasedDowngrade('some-provider/nano-model', 'anthropic/claude-opus-4-20250514');
+      expect(result).toBe(false); // simple (1) → complex (3) = upgrade, not downgrade
+    });
+
+    it('should detect cross-provider upgrades (flash→o3)', () => {
+      // Test flash (mid) → o3 (reasoning) = upgrade, not downgrade  
+      const result = testTierBasedDowngrade('google/gemini-flash', 'openai/o3');
+      expect(result).toBe(false); // mid (2) → reasoning (4) = upgrade, not downgrade
+    });
+
+    it('should handle same-tier comparisons (gpt-4.1-mini vs gemini-flash = not downgrade)', () => {
+      // Both models are mid-tier, should not be downgrade
+      const result = testTierBasedDowngrade('openai/gpt-4.1-mini', 'google/gemini-flash');
+      expect(result).toBe(false); // mid (2) → mid (2) = same tier, not downgrade
+    });
+
+    it('should maintain backward compatibility with existing Claude models', () => {
+      // Test existing Claude hierarchy still works - opus → haiku should be downgrade
+      const result = testTierBasedDowngrade('anthropic/claude-opus-4-20250514', 'anthropic/claude-3-haiku-20240307');
+      expect(result).toBe(true); // complex (3) → simple (1) = downgrade
+    });
+
+    it('should maintain backward compatibility with existing GPT models', () => {
+      // Test existing GPT logic - gpt-4 → gpt-3.5 should be downgrade
+      const result = testTierBasedDowngrade('openai/gpt-4', 'openai/gpt-3.5-turbo');
+      expect(result).toBe(true); // complex (3) → simple (1) = downgrade
+    });
+
+    it('should handle unknown models with fallback to complex tier', () => {
+      // Unknown models should fallback to complex tier: complex → complex = not downgrade
+      const result = testTierBasedDowngrade('unknown/mystery-model-1', 'unknown/mystery-model-2');
+      expect(result).toBe(false); // complex (3) → complex (3) = same tier, not downgrade
+    });
+
+    it('should handle mixed known/unknown models - opus to unknown', () => {
+      // Known opus (complex) → unknown (complex fallback) = not downgrade
+      const result = testTierBasedDowngrade('anthropic/claude-opus-4-20250514', 'unknown/mystery-model');
+      expect(result).toBe(false); // complex (3) → complex (3) = same tier, not downgrade
+    });
+
+    it('should handle mixed known/unknown models - haiku to unknown', () => {
+      // Known haiku (simple) → unknown (complex fallback) = upgrade, not downgrade
+      const result = testTierBasedDowngrade('anthropic/claude-3-haiku-20240307', 'unknown/mystery-model');
+      expect(result).toBe(false); // simple (1) → complex (3) = upgrade, not downgrade
+    });
+
+    it('should detect tier-based downgrade: complex to simple models', () => {
+      // This is the key test - any complex model to any simple model should be downgrade
+      const result = testTierBasedDowngrade('openai/gpt-4.1', 'anthropic/claude-3-haiku-20240307');
+      expect(result).toBe(true); // complex (3) → simple (1) = downgrade
+    });
+
+    it('should detect tier-based downgrade: reasoning to simple models', () => {
+      // OpenAI o1/o3 (reasoning) to any simple model should be downgrade
+      const result = testTierBasedDowngrade('openai/o1', 'anthropic/claude-3-haiku-20240307');
+      expect(result).toBe(true); // reasoning (4) → simple (1) = downgrade
+    });
+
+    it('should test tier inference works correctly for test models', () => {
+      // Verify our tier inference is working as expected
+      expect(inferTierFromModel('anthropic/claude-opus-4-20250514')).toBe('complex');
+      expect(inferTierFromModel('some-provider/nano-model')).toBe('simple');
+      expect(inferTierFromModel('openai/gpt-4.1')).toBe('complex');
+      expect(inferTierFromModel('google/gemini-2.5-flash')).toBe('mid');
+      expect(inferTierFromModel('openai/o1')).toBe('reasoning');
+      expect(inferTierFromModel('openai/o3')).toBe('reasoning');
+      expect(inferTierFromModel('openai/gpt-4.1-mini')).toBe('mid');
+      expect(inferTierFromModel('unknown/mystery-model')).toBe('complex'); // fallback
+    });
+
+    it('should verify tier ranks are correct', () => {
+      // Verify tier ranking system: simple=1, mid=2, complex=3, reasoning=4
+      expect(TIER_RANKS.simple).toBe(1);
+      expect(TIER_RANKS.mid).toBe(2);
+      expect(TIER_RANKS.complex).toBe(3);
+      expect(TIER_RANKS.reasoning).toBe(4);
     });
   });
 

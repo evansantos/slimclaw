@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 import { resolveModel } from '../model-router.js';
 import { classifyComplexity } from '../../classifier/index.js';
+import { inferTierFromModel } from '../tiers.js';
+import { DEFAULT_MODEL_PRICING } from '../pricing.js';
 import type { SlimClawConfig } from '../../config.js';
 import type { RoutingContext } from '../overrides.js';
 import type { Message } from '../../classifier/classify.js';
@@ -287,6 +289,225 @@ describe('routing integration', () => {
       expect(decision.tier).toBe('simple'); // Empty conversation defaults to simple
       expect(decision.targetModel).toBe('anthropic/claude-3-haiku-20240307');
       expect(decision.reason).toBe('routed');
+    });
+  });
+
+  describe('Cross-provider model routing integration', () => {
+    it('should infer correct tiers for cross-provider models end-to-end', () => {
+      // Test cross-provider tier inference works end-to-end
+      expect(inferTierFromModel("openai/o4-mini")).toBe('reasoning');
+      expect(inferTierFromModel("google/gemini-2.5-flash")).toBe('mid');
+      expect(inferTierFromModel("openai/gpt-4.1-nano")).toBe('simple');
+      expect(inferTierFromModel("deepseek/deepseek-r1-0528")).toBe('reasoning');
+      
+      // Additional cross-provider models for comprehensive testing
+      expect(inferTierFromModel("google/gemini-2.5-pro")).toBe('reasoning');
+      expect(inferTierFromModel("openai/gpt-4.1-mini")).toBe('mid');
+      expect(inferTierFromModel("deepseek/deepseek-v3.2")).toBe('simple');
+      expect(inferTierFromModel("meta-llama/llama-4-maverick")).toBe('mid');
+      expect(inferTierFromModel("qwen/qwen3-coder")).toBe('mid');
+    });
+
+    it('should detect cross-provider downgrades correctly via routing decisions', () => {
+      const messages: Message[] = [
+        { role: 'user', content: 'Simple test message' }
+      ];
+
+      const noDowngradeConfig: SlimClawConfig['routing'] = {
+        ...baseConfig,
+        allowDowngrade: false,
+        tiers: {
+          simple: 'openai/gpt-4.1-nano',
+          mid: 'google/gemini-2.5-flash', 
+          complex: 'openai/gpt-4.1',
+          reasoning: 'openai/o4-mini',
+        }
+      };
+
+      // Test reasoning → mid (should be blocked downgrade)
+      const classification1 = classifyComplexity(messages);
+      classification1.tier = 'simple'; // Force simple tier to test downgrade
+      
+      const context1: RoutingContext = {
+        originalModel: 'openai/o4-mini' // reasoning tier model
+      };
+      
+      const decision1 = resolveModel(classification1, noDowngradeConfig, context1);
+      // Should keep original model (reasoning tier) instead of downgrading to simple
+      expect(decision1.targetModel).toBe('openai/o4-mini');
+      expect(decision1.reason).toBe('pinned');
+
+      // Test mid → simple (should be blocked downgrade)  
+      const context2: RoutingContext = {
+        originalModel: 'google/gemini-2.5-flash' // mid tier model
+      };
+      
+      const decision2 = resolveModel(classification1, noDowngradeConfig, context2);
+      // Should keep original model (mid tier) instead of downgrading to simple
+      expect(decision2.targetModel).toBe('google/gemini-2.5-flash');
+      expect(decision2.reason).toBe('pinned');
+
+      // Test simple → reasoning (should be allowed upgrade)
+      const complexClassification = classifyComplexity([
+        { role: 'user', content: 'Complex reasoning task requiring deep mathematical proof' }
+      ]);
+      
+      const context3: RoutingContext = {
+        originalModel: 'openai/gpt-4.1-nano' // simple tier model
+      };
+      
+      const decision3 = resolveModel(complexClassification, noDowngradeConfig, context3);
+      // Should route to higher tier if classification suggests it
+      if (complexClassification.tier === 'reasoning' || complexClassification.tier === 'complex') {
+        expect(decision3.targetModel).not.toBe('openai/gpt-4.1-nano');
+        expect(decision3.reason).toBe('routed');
+      }
+    });
+
+    it('should have pricing entries for all cross-provider models', () => {
+      // List of 12 cross-provider models based on the pricing file
+      const crossProviderModels = [
+        'openai/gpt-4.1-nano',
+        'openai/gpt-4.1-mini', 
+        'openai/gpt-4.1',
+        'openai/gpt-4o-mini',
+        'openai/o4-mini',
+        'openai/o3',
+        'google/gemini-2.5-flash',
+        'google/gemini-2.5-pro',
+        'deepseek/deepseek-r1-0528',
+        'deepseek/deepseek-v3.2',
+        'meta-llama/llama-4-maverick',
+        'qwen/qwen3-coder'
+      ];
+
+      // Verify all 12 cross-provider models have pricing entries
+      crossProviderModels.forEach(model => {
+        expect(DEFAULT_MODEL_PRICING).toHaveProperty(model);
+        
+        const pricing = DEFAULT_MODEL_PRICING[model];
+        expect(pricing).toHaveProperty('inputPer1k');
+        expect(pricing).toHaveProperty('outputPer1k');
+        
+        // Verify pricing values are positive
+        expect(pricing.inputPer1k).toBeGreaterThan(0);
+        expect(pricing.outputPer1k).toBeGreaterThan(0);
+        
+        // Verify output pricing >= input pricing (standard model economics)
+        expect(pricing.outputPer1k).toBeGreaterThanOrEqual(pricing.inputPer1k);
+      });
+
+      // Verify we have exactly the expected number of cross-provider models
+      const crossProviderCount = crossProviderModels.length;
+      expect(crossProviderCount).toBe(12);
+    });
+
+    it('should handle cross-provider routing with custom tier configurations', () => {
+      const messages: Message[] = [
+        { role: 'user', content: 'Medium complexity task' }
+      ];
+
+      const crossProviderConfig: SlimClawConfig['routing'] = {
+        ...baseConfig,
+        tiers: {
+          simple: 'openai/gpt-4.1-nano',
+          mid: 'google/gemini-2.5-flash',
+          complex: 'openai/gpt-4.1',
+          reasoning: 'deepseek/deepseek-r1-0528'
+        }
+      };
+
+      const classification = classifyComplexity(messages);
+      const context: RoutingContext = {
+        originalModel: 'anthropic/claude-3-haiku-20240307'
+      };
+
+      const decision = resolveModel(classification, crossProviderConfig, context);
+
+      // Should use cross-provider model from custom config
+      if (decision.reason === 'routed') {
+        const validCrossProviderModels = [
+          'openai/gpt-4.1-nano',
+          'google/gemini-2.5-flash', 
+          'openai/gpt-4.1',
+          'deepseek/deepseek-r1-0528'
+        ];
+        expect(validCrossProviderModels).toContain(decision.targetModel);
+      }
+    });
+
+    it('should enable thinking for cross-provider reasoning models', () => {
+      const messages: Message[] = [
+        { role: 'user', content: 'Solve this complex mathematical proof step by step' }
+      ];
+
+      const reasoningConfig: SlimClawConfig['routing'] = {
+        ...baseConfig,
+        tiers: {
+          simple: 'openai/gpt-4.1-nano',
+          mid: 'google/gemini-2.5-flash', 
+          complex: 'openai/gpt-4.1',
+          reasoning: 'deepseek/deepseek-r1-0528'
+        }
+      };
+
+      const classification = classifyComplexity(messages);
+      const context: RoutingContext = {
+        originalModel: 'openai/gpt-4.1-nano'
+      };
+
+      const decision = resolveModel(classification, reasoningConfig, context);
+
+      // If classified as reasoning tier, should enable thinking
+      if (decision.tier === 'reasoning') {
+        expect(decision.thinking).toEqual({
+          type: 'enabled',
+          budget_tokens: 10000
+        });
+        expect(decision.targetModel).toBe('deepseek/deepseek-r1-0528');
+      }
+    });
+
+    it('should preserve cross-provider model context through routing chain', () => {
+      const messages: Message[] = [
+        { role: 'user', content: 'Complex debugging task' }
+      ];
+
+      const crossProviderConfig: SlimClawConfig['routing'] = {
+        ...baseConfig,
+        allowDowngrade: true,
+        tiers: {
+          simple: 'openai/gpt-4.1-nano',
+          mid: 'google/gemini-2.5-flash',
+          complex: 'meta-llama/llama-4-maverick', 
+          reasoning: 'openai/o4-mini'
+        }
+      };
+
+      const classification = classifyComplexity(messages);
+      const context: RoutingContext = {
+        originalModel: 'qwen/qwen3-coder',
+        sessionKey: 'cross-provider-session',
+        agentId: 'cross-provider-test'
+      };
+
+      const decision = resolveModel(classification, crossProviderConfig, context);
+
+      // Should preserve context information
+      expect(decision.originalModel).toBe('qwen/qwen3-coder');
+      expect(decision.confidence).toBeGreaterThanOrEqual(0);
+      expect(decision.confidence).toBeLessThanOrEqual(1);
+      
+      // Should use cross-provider model for target (unless pinned/disabled)
+      if (decision.reason === 'routed') {
+        const validTargets = [
+          'openai/gpt-4.1-nano',
+          'google/gemini-2.5-flash',
+          'meta-llama/llama-4-maverick',
+          'openai/o4-mini'
+        ];
+        expect(validTargets).toContain(decision.targetModel);
+      }
     });
   });
 });

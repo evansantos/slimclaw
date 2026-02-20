@@ -5,6 +5,10 @@
     "type": "git",
     "url": "https://github.com/evansantos/slimclaw.git"
   },
+  "homepage": "https://github.com/evansantos/slimclaw#readme",
+  "bugs": {
+    "url": "https://github.com/evansantos/slimclaw/issues"
+  },
   "description": "Inference optimization middleware — windowing, routing, caching",
   "type": "module",
   "main": "dist/index.js",

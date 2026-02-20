@@ -19,7 +19,29 @@
       "complex": "anthropic/claude-opus-4-6",
       "reasoning": "anthropic/claude-opus-4-6"
     },
-    "reasoningBudget": 10000
+    "reasoningBudget": 10000,
+    "_crossProviderReference": {
+      "_note": "Option C (Hybrid) Cross-Provider Tier Mapping — reference for Phase 2 when hook mutations are supported. tierProviders glob patterns (openai/*) require matching logic in Phase 2.",
+      "tiers": {
+        "simple": "openai/gpt-4.1-nano",
+        "mid": "anthropic/claude-sonnet-4-20250514",
+        "complex": "anthropic/claude-opus-4-6",
+        "reasoning": "openai/o4-mini"
+      },
+      "tierProviders": {
+        "openai/gpt-4.1-nano": "openrouter",
+        "openai/o4-mini": "openrouter",
+        "google/gemini-2.5-flash": "openrouter",
+        "deepseek/deepseek-chat": "openrouter",
+        "meta-llama/llama-4-maverick": "openrouter",
+        "qwen/qwen3-coder": "openrouter"
+      },
+      "savingsEstimate": {
+        "simple": "60-68% vs Haiku (gpt-4.1-nano)",
+        "reasoning": "78-82% vs Opus (o4-mini)",
+        "note": "Anthropic models kept for mid/complex due to superior tool use and prompt caching"
+      }
+    }
   },
   "dashboard": {
     "enabled": true,

@@ -44,31 +44,28 @@ export function getThinkingBudget(config: SlimClawConfig['routing']): number {
 }
 
 /**
+ * Tier ranking system as specified in Task 3
+ * simple=1, mid=2, complex=3, reasoning=4
+ */
+export const TIER_RANKS: Record<ComplexityTier, number> = {
+  simple: 1,
+  mid: 2,
+  complex: 3,
+  reasoning: 4,
+} as const;
+
+/**
  * Check if a tier downgrade is happening
  */
 export function isDowngrade(fromTier: ComplexityTier, toTier: ComplexityTier): boolean {
-  const tierRanks: Record<ComplexityTier, number> = {
-    simple: 0,
-    mid: 1,
-    complex: 2,
-    reasoning: 3,
-  };
-  
-  return tierRanks[toTier] < tierRanks[fromTier];
+  return TIER_RANKS[toTier] < TIER_RANKS[fromTier];
 }
 
 /**
  * Check if a tier upgrade is happening
  */
 export function isUpgrade(fromTier: ComplexityTier, toTier: ComplexityTier): boolean {
-  const tierRanks: Record<ComplexityTier, number> = {
-    simple: 0,
-    mid: 1,
-    complex: 2,
-    reasoning: 3,
-  };
-  
-  return tierRanks[toTier] > tierRanks[fromTier];
+  return TIER_RANKS[toTier] > TIER_RANKS[fromTier];
 }
 
 /**
@@ -78,11 +75,34 @@ export function isUpgrade(fromTier: ComplexityTier, toTier: ComplexityTier): boo
 export function inferTierFromModel(model: string): ComplexityTier {
   const lowerModel = model.toLowerCase();
   
+  // Claude models
   if (lowerModel.includes('haiku')) return 'simple';
   if (lowerModel.includes('sonnet')) return 'mid';
-  if (lowerModel.includes('opus')) return 'complex'; // Default opus to complex, not reasoning
+  if (lowerModel.includes('opus')) return 'complex'; // Opus is high-capability general, not dedicated reasoning like o3/o4
   
-  // Fallback based on model patterns
+  // Cross-Provider Models - Reasoning tier (check first for specificity)
+  if (lowerModel.includes('o1') || lowerModel.includes('o3') || lowerModel.includes('o4-mini')) return 'reasoning';
+  if (lowerModel.includes('deepseek-r1')) return 'reasoning';
+  if (lowerModel.includes('gemini-2.5-pro')) return 'reasoning';
+  
+  // Cross-Provider Models - Simple tier (check specific patterns first)
+  if (lowerModel.includes('gpt-4.1-nano') || lowerModel.includes('gpt-4o-mini')) return 'simple';
+  if (lowerModel.includes('nano-model') || lowerModel.includes('nano')) return 'simple';
+  if (lowerModel.includes('deepseek-v3')) return 'simple';
+  
+  // Cross-Provider Models - Mid tier
+  if (lowerModel.includes('gpt-4.1-mini')) return 'mid';
+  if (lowerModel.includes('gemini-2.5-flash') || lowerModel.includes('gemini-flash')) return 'mid';
+  if (lowerModel.includes('flash')) return 'mid';
+  if (lowerModel.includes('llama-4-maverick')) return 'mid';
+  if (lowerModel.includes('qwen3-coder')) return 'mid';
+  
+  // Cross-Provider Models - Complex tier
+  // Note: gpt-4.1-nano and gpt-4.1-mini are already matched above in simple/mid tiers
+  if (lowerModel.includes('gpt-4.1') && !lowerModel.includes('nano') && !lowerModel.includes('mini')) return 'complex';
+  if (lowerModel.includes('gpt-4-pro')) return 'complex';
+  
+  // Legacy fallback patterns
   if (lowerModel.includes('gpt-3.5') || lowerModel.includes('llama-7b')) return 'simple';
   if (lowerModel.includes('gpt-4-turbo') || lowerModel.includes('llama-70b')) return 'mid';
   if (lowerModel.includes('gpt-4') || lowerModel.includes('llama-405b')) return 'complex';
