@@ -44,6 +44,26 @@ export {
   type OverrideResult 
 } from './overrides.js';
 
+// Phase 2a: Shadow Routing
+export { 
+  resolveProvider,
+  matchTierProvider,
+  inferProviderFromModelId,
+  type ProviderResolution 
+} from './provider-resolver.js';
+
+export { 
+  buildShadowRecommendation,
+  formatShadowLog,
+  type ShadowRecommendation 
+} from './shadow-router.js';
+
+export { 
+  makeRoutingDecision,
+  buildOpenRouterHeaders,
+  type RoutingOutput 
+} from './routing-decision.js';
+
 /**
  * Version info for the routing module
  */

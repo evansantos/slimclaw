@@ -34,6 +34,8 @@ export interface ModelRoutingDecision {
   confidence: number;
   /** Reason for the routing decision */
   reason: "routed" | "pinned" | "low-confidence" | "routing-disabled";
+  /** Whether the routing decision was actually applied */
+  applied: boolean;
   /** Thinking configuration for reasoning models */
   thinking: { type: "enabled"; budget_tokens: number } | null;
 }
@@ -65,6 +67,7 @@ export function resolveModel(
         tier: classification.tier,
         confidence: classification.confidence,
         reason: "routing-disabled",
+        applied: false,
         thinking: null
       });
     }
@@ -95,6 +98,7 @@ export function resolveModel(
         tier: classification.tier,
         confidence: classification.confidence,
         reason,
+        applied: false,
         thinking: isTierReasoning(classification.tier) ? {
           type: "enabled",
           budget_tokens: getThinkingBudget(config)
@@ -113,6 +117,7 @@ export function resolveModel(
         tier: classification.tier,
         confidence: classification.confidence,
         reason: "pinned", // Downgrade blocked acts like pinning
+        applied: false,
         thinking: isTierReasoning(classification.tier) ? {
           type: "enabled",
           budget_tokens: getThinkingBudget(config)
@@ -127,6 +132,7 @@ export function resolveModel(
       tier: classification.tier,
       confidence: classification.confidence,
       reason: "routed",
+      applied: true,
       thinking: isTierReasoning(classification.tier) ? {
         type: "enabled",
         budget_tokens: getThinkingBudget(config)
@@ -142,6 +148,7 @@ export function resolveModel(
       tier: classification.tier,
       confidence: classification.confidence,
       reason: "routing-disabled",
+      applied: false,
       thinking: null
     });
   }
@@ -156,6 +163,7 @@ function createDecision(params: {
   tier: ComplexityTier;
   confidence: number;
   reason: ModelRoutingDecision['reason'];
+  applied: boolean;
   thinking: { type: "enabled"; budget_tokens: number } | null;
 }): ModelRoutingDecision {
   return {
@@ -164,6 +172,7 @@ function createDecision(params: {
     tier: params.tier,
     confidence: Math.round(params.confidence * 100) / 100, // Round to 2 decimal places
     reason: params.reason,
+    applied: params.applied,
     thinking: params.thinking
   };
 }
