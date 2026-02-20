@@ -11,6 +11,7 @@ import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { classifyWithRouter } from './classifier/clawrouter-classifier.js';
 import type { Message } from './classifier/classify.js';
 import type { ComplexityTier } from './classifier/signals.js';
+import { DEFAULT_CONFIG, type SlimClawConfig } from './config.js';
 
 // Shadow routing imports
 import { makeRoutingDecision, formatShadowLog } from './routing/index.js';
@@ -490,19 +491,14 @@ const slimclawPlugin = {
             };
 
             // Make the routing decision using the full config structure
-            const fullConfig = {
+            const fullConfig: SlimClawConfig = {
+              ...DEFAULT_CONFIG,
               enabled: pluginConfig.enabled,
               mode: 'shadow' as const,
-              windowing: { enabled: true, maxMessages: 10, maxTokens: 4000, summarizeThreshold: 8 },
               routing: {
+                ...DEFAULT_CONFIG.routing,
                 ...pluginConfig.routing,
-                allowDowngrade: true // Add missing field
               },
-              cacheBreakpoints: { enabled: true, minContentLength: 1000 },
-              metrics: { enabled: true, logLevel: 'summary' as const, logPath: 'metrics', flushIntervalMs: 10000 },
-              dashboard: { enabled: false, port: 3333 },
-              logging: { level: 'info' as const, format: 'human' as const, fileOutput: true, logPath: 'logs', consoleOutput: true, includeStackTrace: true, colors: true },
-              caching: { enabled: true, injectBreakpoints: true, minContentLength: 1000 }
             };
 
             const routingOutput = makeRoutingDecision(
