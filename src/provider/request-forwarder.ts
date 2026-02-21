@@ -47,10 +47,16 @@ export class RequestForwarder {
       ...request.headers, // Include any provider-specific headers
     };
 
+    // Strip provider prefix from model ID (e.g., "openrouter/google/gemini-2.5-flash" → "google/gemini-2.5-flash")
+    let modelId = request.targetModel;
+    if (modelId.startsWith(`${request.targetProvider}/`)) {
+      modelId = modelId.slice(request.targetProvider.length + 1);
+    }
+
     // Create request body with target model
     const requestBody = {
       ...request.body,
-      model: request.targetModel,
+      model: modelId,
     };
 
     // Create AbortController for timeout
