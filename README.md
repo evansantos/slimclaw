@@ -418,6 +418,58 @@ const resolution = resolveProvider('openai/gpt-4-turbo', {
 
 > **Note:** `@blockrun/clawrouter` pulls `viem` as a transitive dependency (~50 packages). This doesn't affect functionality but adds to `node_modules` size. See [BlockRunAI/clawrouter#1](https://github.com/BlockRunAI/clawrouter/issues/1) for tracking.
 
+## Provider Proxy Mode (Phase 1)
+
+SlimClaw can operate as an active provider proxy, intercepting model requests and applying intelligent routing.
+
+### Quick Start
+
+1. Enable proxy in `slimclaw.config.json`:
+```json
+{
+  "enabled": true,
+  "proxy": {
+    "enabled": true,
+    "port": 3334
+  },
+  "routing": {
+    "enabled": true,
+    "tiers": {
+      "simple": "anthropic/claude-3-haiku-20240307",
+      "mid": "anthropic/claude-sonnet-4-20250514",
+      "complex": "anthropic/claude-opus-4-20250514"
+    }
+  }
+}
+```
+
+2. Set your OpenClaw model to `slimclaw/auto`:
+```json
+{
+  "defaultModel": "slimclaw/auto"
+}
+```
+
+### How It Works
+
+1. OpenClaw sends request to `slimclaw/auto`
+2. SlimClaw classifies prompt complexity
+3. Routing pipeline selects optimal model for the tier
+4. Request forwards to real provider (OpenRouter)
+5. Streaming response pipes back to OpenClaw
+
+### Supported (Phase 1)
+
+| Feature | Status |
+|---------|--------|
+| `slimclaw/auto` model | ✅ |
+| OpenRouter forwarding | ✅ |
+| Streaming responses | ✅ |
+| Budget enforcement | ✅ |
+| A/B testing | ✅ |
+| Direct Anthropic API | ⏳ Phase 2 |
+| Multiple virtual models | ⏳ Phase 2 |
+
 ## Contributing
 
 PRs welcome! The project uses branch protection with CI + [GitSniff](https://gitsniff.ai) review.
