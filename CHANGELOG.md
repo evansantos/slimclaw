@@ -2,6 +2,27 @@
 
 All notable changes to SlimClaw are documented here.
 
+## [0.4.0] — 2026-02-21
+
+### Added
+
+#### Provider Proxy Phase 1: Active Routing
+- **Virtual Model System** — `slimclaw/auto` model with intelligent complexity-based routing
+- **HTTP Sidecar Server** — Local proxy on port 3334, receives OpenAI-format requests
+- **Request Forwarder** — OpenRouter integration with streaming, proper auth, timeout/abort
+- **Provider Plugin** — Full `api.registerProvider()` integration with OpenClaw
+- **Config Schema** — `proxy` section with Zod validation (port, virtualModels, providerOverrides, timeout)
+- **Service Lifecycle** — Sidecar managed via `api.registerService()` (start/stop)
+- **Pipeline Reuse** — 100% reuse of existing classifier, router, budget, and A/B testing components
+
+### How It Works
+1. Set `model: "slimclaw/auto"` in OpenClaw config
+2. SlimClaw classifies prompt complexity → selects optimal tier model
+3. Request forwards to real provider (OpenRouter) with streaming
+4. Budget enforcement and A/B testing apply to proxied requests
+
+---
+
 ## [0.3.0] — 2026-02-21
 
 ### Added
