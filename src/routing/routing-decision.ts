@@ -107,19 +107,21 @@ export function makeRoutingDecision(
     budgetResult = services.budgetTracker.check(decision.tier);
     
     // Apply enforcement if budget exceeded
-    if (!budgetResult.allowed && config.routing.budget.enforcementAction !== 'alert-only') {
-      if (config.routing.budget.enforcementAction === 'downgrade') {
+    if (!budgetResult.allowed) {
+      const action = config.routing.budget.enforcementAction ?? 'alert-only';
+      if (action === 'downgrade') {
         // Try to downgrade to a cheaper tier
         const downgradeTier = getDowngradeTier(decision.tier);
         
         // Re-resolve with downgraded tier
         const downgradeClassification = { ...classification, tier: downgradeTier as any };
         decision = resolveModel(downgradeClassification, config.routing, ctx);
-        decision.reason = 'routed'; // Still a routing decision, just budget-constrained
-      } else if (config.routing.budget.enforcementAction === 'block') {
+        decision.reason = 'budget-downgrade';
+      } else if (action === 'block') {
         // Keep original model but mark as blocked
-        decision.reason = 'routing-disabled'; // Budget enforcement disabled routing
+        decision.reason = 'budget-blocked';
       }
+      // 'alert-only': no mutation, just log
     }
   }
   
@@ -131,7 +133,10 @@ export function makeRoutingDecision(
     // Override model if assigned to experiment
     if (abAssignment) {
       decision.targetModel = abAssignment.variant.model;
-      decision.reason = 'routed'; // A/B testing is still routing
+      // Preserve budget-enforced reason if already set
+      if (!decision.reason.startsWith('budget-')) {
+        decision.reason = 'routed';
+      }
     }
   }
   

@@ -135,7 +135,7 @@ describe('Phase 3b Routing Integration', () => {
 
       expect(output.budget?.allowed).toBe(false);
       expect(output.model).not.toBe('anthropic/claude-opus-4-20250514'); // Should be downgraded
-      expect(output.shadow.decision.reason).toBe('routed');
+      expect(output.shadow.decision.reason).toBe('budget-downgrade');
     });
 
     test('should block request when budget exceeded and enforcement is "block"', () => {
@@ -170,7 +170,7 @@ describe('Phase 3b Routing Integration', () => {
       );
 
       expect(output.budget?.allowed).toBe(false);
-      expect(output.shadow.decision.reason).toBe('routing-disabled');
+      expect(output.shadow.decision.reason).toBe('budget-blocked');
     });
   });
 
@@ -318,7 +318,7 @@ describe('Phase 3b Routing Integration', () => {
 
       // Budget enforcement should take precedence
       expect(output.budget?.allowed).toBe(false);
-      expect(output.shadow.decision.reason).toBe('routed');
+      expect(output.shadow.decision.reason).toBe('budget-downgrade');
       
       // A/B testing might still be applied to the downgraded tier
       // but budget constraint is respected first

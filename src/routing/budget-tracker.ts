@@ -50,8 +50,8 @@ export interface BudgetCheckResult {
  * Internal spending tracker per tier
  */
 interface SpendingTracker {
-  daily: { spent: number; resetAt: number };
-  weekly: { spent: number; resetAt: number };
+  daily: { spent: number; resetAt: number; compensation: number };
+  weekly: { spent: number; resetAt: number; compensation: number };
 }
 
 /**
@@ -93,8 +93,16 @@ export class BudgetTracker {
       return; // Unknown tier, ignore
     }
 
-    spending.daily.spent += cost;
-    spending.weekly.spent += cost;
+    // Kahan compensated summation for floating-point precision
+    const dy = cost - spending.daily.compensation;
+    const dt = spending.daily.spent + dy;
+    spending.daily.compensation = (dt - spending.daily.spent) - dy;
+    spending.daily.spent = dt;
+
+    const wy = cost - spending.weekly.compensation;
+    const wt = spending.weekly.spent + wy;
+    spending.weekly.compensation = (wt - spending.weekly.spent) - wy;
+    spending.weekly.spent = wt;
   }
 
   /**
@@ -281,11 +289,11 @@ export class BudgetTracker {
         if (!tracker.tierSpending.has(tier)) {
           tracker.tierSpending.set(tier, {
             daily: {
-              spent: 0,
+              spent: 0, compensation: 0,
               resetAt: BudgetTracker.getNextDayReset()
             },
             weekly: {
-              spent: 0,
+              spent: 0, compensation: 0,
               resetAt: BudgetTracker.getNextWeekReset()
             }
           });
@@ -313,12 +321,14 @@ export class BudgetTracker {
       // Check daily reset
       if (now >= spending.daily.resetAt) {
         spending.daily.spent = 0;
+        spending.daily.compensation = 0;
         spending.daily.resetAt = BudgetTracker.getNextDayReset();
       }
 
       // Check weekly reset
       if (now >= spending.weekly.resetAt) {
         spending.weekly.spent = 0;
+        spending.weekly.compensation = 0;
         spending.weekly.resetAt = BudgetTracker.getNextWeekReset();
       }
     }
@@ -336,11 +346,11 @@ export class BudgetTracker {
     for (const tier of allTiers) {
       this.tierSpending.set(tier, {
         daily: {
-          spent: 0,
+          spent: 0, compensation: 0,
           resetAt: BudgetTracker.getNextDayReset()
         },
         weekly: {
-          spent: 0,
+          spent: 0, compensation: 0,
           resetAt: BudgetTracker.getNextWeekReset()
         }
       });

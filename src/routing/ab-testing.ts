@@ -112,10 +112,12 @@ export class ABTestManager {
   private readonly assignments = new Map<string, AssignmentEntry>();
   private readonly results = new Map<string, Map<string, VariantAccumulator>>();
   private readonly maxPendingAssignments: number;
+  private readonly pendingAssignmentTtlMs: number;
 
-  constructor(experiments: ABExperiment[], maxPendingAssignments = 1000) {
+  constructor(experiments: ABExperiment[], maxPendingAssignments = 1000, pendingAssignmentTtlMs = 60 * 60 * 1000) {
     this.experiments = new Map();
     this.maxPendingAssignments = maxPendingAssignments;
+    this.pendingAssignmentTtlMs = pendingAssignmentTtlMs;
     
     // Validate and register experiments
     for (const exp of experiments) {
@@ -145,8 +147,8 @@ export class ABTestManager {
    * @returns Assignment or null if no active experiment
    */
   assign(tier: string, runId: string): ABAssignment | null {
-    // Clean up stale assignments first (1 hour default TTL)
-    this.cleanupStalAssignments(60 * 60 * 1000);
+    // Clean up stale assignments first (configurable TTL, default 1 hour)
+    this.cleanupStalAssignments(this.pendingAssignmentTtlMs);
     
     // Find active experiment for this tier
     const experiment = this.findActiveExperiment(tier);

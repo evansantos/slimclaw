@@ -338,20 +338,36 @@ function estimateTokens(text: string): number {
 /**
  * Estimate model cost for budget tracking
  */
-function estimateModelCost(model: string, inputTokens: number, outputTokens: number): number {
-  // Rough cost estimates per 1k tokens (in USD)
-  const costPer1k = (() => {
-    if (model.includes('gpt-4')) return 0.03;  // GPT-4 ~$30/1M tokens
-    if (model.includes('gpt-3.5')) return 0.002; // GPT-3.5 ~$2/1M tokens  
-    if (model.includes('claude-3-haiku')) return 0.00025; // Haiku ~$0.25/1M tokens
-    if (model.includes('claude-3-sonnet') || model.includes('claude-sonnet')) return 0.003; // Sonnet ~$3/1M tokens
-    if (model.includes('claude-3-opus') || model.includes('claude-opus')) return 0.015; // Opus ~$15/1M tokens
-    if (model.includes('gemini')) return 0.001; // Gemini ~$1/1M tokens
-    return 0.002; // Default fallback
-  })();
-  
-  const totalTokens = inputTokens + outputTokens;
-  return (totalTokens / 1000) * costPer1k;
+/** Hardcoded fallback costs per 1k tokens (USD). Used only when no config pricing is available. */
+const FALLBACK_COST_PER_1K: Record<string, number> = {
+  'gpt-4': 0.03,
+  'gpt-3.5': 0.002,
+  'claude-3-haiku': 0.00025,
+  'claude-sonnet': 0.003,
+  'claude-3-sonnet': 0.003,
+  'claude-opus': 0.015,
+  'claude-3-opus': 0.015,
+  'gemini': 0.001,
+};
+const DEFAULT_COST_PER_1K = 0.002;
+
+function estimateModelCost(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+  configPricing?: Record<string, { inputPer1k: number; outputPer1k: number }>
+): number {
+  // 1. Use config-provided pricing when available (dynamic or static)
+  if (configPricing) {
+    const exact = configPricing[model];
+    if (exact) {
+      return (inputTokens / 1000) * exact.inputPer1k + (outputTokens / 1000) * exact.outputPer1k;
+    }
+  }
+
+  // 2. Hardcoded fallbacks — match by substring
+  const costPer1k = Object.entries(FALLBACK_COST_PER_1K).find(([key]) => model.includes(key))?.[1] ?? DEFAULT_COST_PER_1K;
+  return ((inputTokens + outputTokens) / 1000) * costPer1k;
 }
 
 // Plugin definition
@@ -402,7 +418,11 @@ const slimclawPlugin = {
         minContentLength: typedConfig.caching.minContentLength,
         provider: 'anthropic', // Fixed provider
       },
-      routing: typedConfig.routing,
+      routing: {
+        ...typedConfig.routing,
+        tierProviders: typedConfig.routing.tierProviders ?? {},
+        openRouterHeaders: typedConfig.routing.openRouterHeaders ?? {},
+      } as any,
       dashboard: {
         enabled: false, // Dashboard config not in new schema yet
         port: 3333,
@@ -690,8 +710,11 @@ const slimclawPlugin = {
 
       // === BUDGET TRACKING (Phase 3b) ===
       if (budgetTracker && pending.routing?.tier && latencyMs !== undefined) {
-        // Estimate cost for budget tracking
-        const estimatedCost = estimateModelCost(model, inputTokens, outputTokens);
+        // Prefer shadow cost data when available, fall back to estimate
+        const shadowCostPer1k = pending.routingOutput?.shadow?.costDelta?.actualCostPer1k;
+        const estimatedCost = shadowCostPer1k
+          ? ((inputTokens + outputTokens) / 1000) * shadowCostPer1k
+          : estimateModelCost(model, inputTokens, outputTokens, pluginConfig.routing.pricing as Record<string, { inputPer1k: number; outputPer1k: number }> | undefined);
         if (estimatedCost > 0) {
           budgetTracker.record(pending.routing.tier, estimatedCost);
           
@@ -708,8 +731,11 @@ const slimclawPlugin = {
 
       // === A/B TESTING RESULTS (Phase 3b) ===
       if (abTestManager && pending.routingOutput?.abAssignment && latencyMs !== undefined) {
-        // Record A/B test outcome
-        const estimatedCost = estimateModelCost(model, inputTokens, outputTokens);
+        // Prefer shadow cost data when available, fall back to estimate
+        const abShadowCostPer1k = pending.routingOutput?.shadow?.costDelta?.actualCostPer1k;
+        const estimatedCost = abShadowCostPer1k
+          ? ((inputTokens + outputTokens) / 1000) * abShadowCostPer1k
+          : estimateModelCost(model, inputTokens, outputTokens, pluginConfig.routing.pricing as Record<string, { inputPer1k: number; outputPer1k: number }> | undefined);
         abTestManager.recordOutcome(runId, {
           latencyMs,
           cost: estimatedCost,

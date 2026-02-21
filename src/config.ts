@@ -95,7 +95,7 @@ export const SlimClawConfigSchema = z.object({
       alertThresholdPercent: z.number().min(0).max(100).default(80),
       /** Enforcement action when budget exceeded */
       enforcementAction: z.enum(['downgrade', 'block', 'alert-only']).default('alert-only'),
-    }).optional(),
+    }).default({ enabled: false, daily: {}, weekly: {} }),
     /** A/B testing configuration (Phase 3b) */
     abTesting: z.object({
       /** Enable A/B testing */
@@ -121,10 +121,10 @@ export const SlimClawConfigSchema = z.object({
         endAt: z.number().optional(),
         /** Minimum samples before significance calculation */
         minSamples: z.number().int().min(1).default(100),
-      }).refine(exp => validateVariantWeights(exp.variants), {
+      }).refine(experiment => validateVariantWeights(experiment.variants), {
         message: "Variant weights must sum to 100"
       })).default([]),
-    }).optional(),
+    }).default({ enabled: false, experiments: [] }),
   }).default({}),
 
   caching: z.object({
