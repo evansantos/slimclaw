@@ -33,6 +33,7 @@ export const SlimClawConfigSchema = z.object({
 
   routing: z.object({
     enabled: z.boolean().default(false), // P1 - disabled for MVP
+    mode: z.enum(['shadow', 'active', 'off']).default('shadow'),
     /** Allow downgrading to cheaper models */
     allowDowngrade: z.boolean().default(true),
     /** Models that should never be routed away from */
@@ -195,6 +196,7 @@ export const DEFAULT_CONFIG: SlimClawConfig = {
   },
   routing: {
     enabled: false, // P1 - start with shadow mode only
+    mode: 'shadow' as const,
     allowDowngrade: true,
     pinnedModels: [],
     minConfidence: 0.4,
