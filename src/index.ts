@@ -39,6 +39,14 @@ export {
 import { createDashboard } from './dashboard/index.js';
 import type { MetricsCollector, OptimizerMetrics, MetricsStats } from './metrics/index.js';
 
+// Proxy provider imports
+import {
+  createSlimClawProvider,
+  createSidecarRequestHandler,
+  SidecarServer,
+  type ProviderCredentials
+} from './provider/index.js';
+
 // Config schema for OpenClaw
 const slimclawConfigSchema = {
   type: 'object' as const,
@@ -370,6 +378,25 @@ function estimateModelCost(
   return ((inputTokens + outputTokens) / 1000) * costPer1k;
 }
 
+/**
+ * Extract provider credentials from OpenClaw config
+ */
+function extractProviderCredentials(config: any): Map<string, ProviderCredentials> {
+  const credentials = new Map<string, ProviderCredentials>();
+  if (config?.models?.providers) {
+    for (const [id, providerConfig] of Object.entries(config.models.providers)) {
+      const pc = providerConfig as any;
+      if (pc.baseUrl) {
+        credentials.set(id, {
+          baseUrl: pc.baseUrl,
+          apiKey: pc.apiKey || process.env[`${id.toUpperCase()}_API_KEY`] || ''
+        });
+      }
+    }
+  }
+  return credentials;
+}
+
 // Plugin definition
 const slimclawPlugin = {
   id: 'slimclaw',
@@ -429,6 +456,7 @@ const slimclawPlugin = {
         enabled: false, // Dashboard config not in new schema yet
         port: 3333,
       },
+      proxy: rawConfig.proxy || { enabled: false }, // Add proxy config from raw config
     };
 
     if (pluginConfig.routing.enabled) {
@@ -476,6 +504,81 @@ const slimclawPlugin = {
     if (!pluginConfig.enabled) {
       api.logger.info('SlimClaw is disabled');
       return;
+    }
+
+    // =========================================================================
+    // PROXY PROVIDER REGISTRATION (Phase 1)
+    // =========================================================================
+    if (pluginConfig.proxy?.enabled) {
+      try {
+        const providerCredentials = extractProviderCredentials(api.config);
+        
+        if (providerCredentials.size === 0) {
+          api.logger.info('[SlimClaw] Warning: No provider credentials found, proxy may not work');
+        } else {
+          const providerList = Array.from(providerCredentials.keys()).join(', ');
+          api.logger.info(`[SlimClaw] Found credentials for providers: ${providerList}`);
+        }
+
+        const sidecarPort = pluginConfig.proxy.port || 3334;
+        const requestHandler = createSidecarRequestHandler({
+          port: sidecarPort,
+          virtualModels: pluginConfig.proxy.virtualModels || { auto: { enabled: true } },
+          providerCredentials,
+          slimclawConfig: typedConfig,
+          timeout: pluginConfig.proxy.requestTimeout || 120000,
+          services: {
+            ...(budgetTracker ? { budgetTracker } : {}),
+            ...(abTestManager ? { abTestManager } : {}),
+            ...(latencyTracker ? { latencyTracker } : {})
+          }
+        });
+
+        const sidecarServer = new SidecarServer({
+          port: sidecarPort,
+          timeout: pluginConfig.proxy.requestTimeout || 120000,
+          handler: requestHandler
+        });
+
+        const provider = createSlimClawProvider({
+          port: sidecarPort,
+          virtualModels: pluginConfig.proxy.virtualModels || { auto: { enabled: true } },
+          providerCredentials,
+          slimclawConfig: typedConfig,
+          timeout: pluginConfig.proxy.requestTimeout || 120000,
+          services: {
+            ...(budgetTracker ? { budgetTracker } : {}),
+            ...(abTestManager ? { abTestManager } : {}),
+            ...(latencyTracker ? { latencyTracker } : {})
+          }
+        });
+
+        if (api.registerProvider) {
+          api.registerProvider(provider);
+        }
+
+        if (api.registerService) {
+          api.registerService({
+            id: 'slimclaw-sidecar',
+            name: 'SlimClaw Proxy Sidecar',
+            start: async () => {
+              await sidecarServer.start();
+              api.logger.info(`[SlimClaw] Sidecar server started on port ${sidecarServer.getPort()}`);
+            },
+            stop: async () => {
+              if (sidecarServer.isRunning()) {
+                await sidecarServer.stop();
+                api.logger.info('[SlimClaw] Sidecar server stopped');
+              }
+            }
+          });
+        }
+
+        api.logger.info(`[SlimClaw] Provider proxy registered on port ${sidecarPort}`);
+        api.logger.info(`[SlimClaw] To use: set model "slimclaw/auto" in OpenClaw config`);
+      } catch (error) {
+        api.logger.info(`[SlimClaw] Failed to register proxy provider: ${error instanceof Error ? error.message : error}`);
+      }
     }
 
     // =========================================================================
