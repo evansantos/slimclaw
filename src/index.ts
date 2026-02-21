@@ -422,6 +422,8 @@ const slimclawPlugin = {
         ...typedConfig.routing,
         tierProviders: typedConfig.routing.tierProviders ?? {},
         openRouterHeaders: typedConfig.routing.openRouterHeaders ?? {},
+        budget: typedConfig.routing.budget ?? { enabled: false, daily: {}, weekly: {} },
+        abTesting: typedConfig.routing.abTesting ?? { enabled: false, experiments: [] },
       } as any,
       dashboard: {
         enabled: false, // Dashboard config not in new schema yet
