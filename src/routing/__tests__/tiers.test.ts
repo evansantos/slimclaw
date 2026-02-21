@@ -10,6 +10,7 @@ import {
   isDowngrade,
   isUpgrade,
   inferTierFromModel,
+  getDowngradeTier,
   DEFAULT_TIER_MODELS,
 } from '../tiers.js';
 import type { SlimClawConfig } from '../../config.js';
@@ -117,6 +118,33 @@ describe('tiers', () => {
       expect(isUpgrade('mid', 'simple')).toBe(false);
       expect(isUpgrade('reasoning', 'mid')).toBe(false);
       expect(isUpgrade('simple', 'simple')).toBe(false); // Same tier
+    });
+  });
+
+  describe('getDowngradeTier', () => {
+    it('should correctly downgrade each tier', () => {
+      expect(getDowngradeTier('reasoning')).toBe('complex');
+      expect(getDowngradeTier('complex')).toBe('mid');
+      expect(getDowngradeTier('mid')).toBe('simple');
+    });
+
+    it('should keep simple tier at simple', () => {
+      expect(getDowngradeTier('simple')).toBe('simple');
+    });
+
+    it('should handle all tiers in downgrade chain', () => {
+      // Test full downgrade chain: reasoning → complex → mid → simple → simple
+      let current = 'reasoning' as const;
+      expect(getDowngradeTier(current)).toBe('complex');
+      
+      current = 'complex' as const;
+      expect(getDowngradeTier(current)).toBe('mid');
+      
+      current = 'mid' as const;
+      expect(getDowngradeTier(current)).toBe('simple');
+      
+      current = 'simple' as const;
+      expect(getDowngradeTier(current)).toBe('simple');
     });
   });
 

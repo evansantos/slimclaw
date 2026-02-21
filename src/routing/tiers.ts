@@ -69,6 +69,25 @@ export function isUpgrade(fromTier: ComplexityTier, toTier: ComplexityTier): boo
 }
 
 /**
+ * Get the next lower tier in the downgrade chain
+ * reasoning → complex → mid → simple → simple (stays at lowest)
+ */
+export function getDowngradeTier(tier: ComplexityTier): ComplexityTier {
+  // Find the tier with rank one lower than current tier
+  const currentRank = TIER_RANKS[tier];
+  const targetRank = currentRank - 1;
+  
+  // If already at lowest tier, stay there
+  if (targetRank < 1) {
+    return 'simple';
+  }
+  
+  // Find the tier with the target rank
+  const entry = Object.entries(TIER_RANKS).find(([, rank]) => rank === targetRank);
+  return entry ? entry[0] as ComplexityTier : 'simple';
+}
+
+/**
  * Infer tier from model name (best effort)
  * Used for reverse mapping when needed
  */

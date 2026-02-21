@@ -33,7 +33,7 @@ export interface ModelRoutingDecision {
   /** Classification confidence (0.0 - 1.0) */
   confidence: number;
   /** Reason for the routing decision */
-  reason: "routed" | "pinned" | "low-confidence" | "routing-disabled";
+  reason: "routed" | "pinned" | "low-confidence" | "routing-disabled" | "budget-downgrade" | "budget-blocked";
   /** Whether the routing decision was actually applied */
   applied: boolean;
   /** Thinking configuration for reasoning models */

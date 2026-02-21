@@ -78,10 +78,29 @@ export {
   DEFAULT_LATENCY_TRACKER_CONFIG
 } from './latency-tracker.js';
 
+// Phase 3b: Budget Enforcement + A/B Testing
+export { 
+  BudgetTracker,
+  type BudgetConfig,
+  type BudgetCheckResult,
+  DEFAULT_BUDGET_CONFIG
+} from './budget-tracker.js';
+
+export {
+  ABTestManager,
+  type ABExperiment,
+  type ABVariant,
+  type ABResult,
+  type ABExperimentResults,
+  type ABAssignment,
+  type ABOutcome,
+  DEFAULT_AB_CONFIG
+} from './ab-testing.js';
+
 /**
- * Version info for the routing module
+ * Version info for the routing module (update for Phase 3b)
  */
-export const ROUTING_VERSION = '0.1.0';
+export const ROUTING_VERSION = '0.3.0';
 
 /**
  * Default routing configuration for quick setup
@@ -96,5 +115,28 @@ export const DEFAULT_ROUTING_CONFIG = {
     mid: "anthropic/claude-sonnet-4-20250514",
     complex: "anthropic/claude-opus-4-20250514",
     reasoning: "anthropic/claude-opus-4-20250514",
+  },
+  // Phase 3a defaults
+  dynamicPricing: {
+    enabled: false,
+    cacheTtlMs: 21600000,
+    fetchTimeoutMs: 5000
+  },
+  latencyTracking: {
+    enabled: true,
+    windowSize: 50,
+    outlierThresholdMs: 60000
+  },
+  // Phase 3b defaults
+  budget: {
+    enabled: false,
+    daily: {},
+    weekly: {},
+    alertThresholdPercent: 80,
+    enforcementAction: 'alert-only'
+  },
+  abTesting: {
+    enabled: false,
+    experiments: []
   }
 } as const;

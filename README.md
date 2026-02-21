@@ -35,45 +35,124 @@ Advanced inference optimization plugin for OpenClaw. Provides intelligent model 
 
 ## Installation
 
-### From npm
+### Method 1: OpenClaw CLI (Recommended)
 
 ```bash
+openclaw plugins install slimclaw
+```
+
+This automatically downloads, installs, and registers the plugin. Skip to [Configuration](#configuration).
+
+### Method 2: npm install (Manual Setup)
+
+```bash
+# Install to OpenClaw plugins directory
+mkdir -p ~/.openclaw/plugins/slimclaw
+cd ~/.openclaw/plugins/slimclaw
+npm init -y
 npm install slimclaw
 ```
 
-### From source
+Then register the plugin in `~/.openclaw/openclaw.json`:
+
+```json
+{
+  "plugins": {
+    "load": {
+      "paths": ["~/.openclaw/plugins/slimclaw"]
+    },
+    "entries": {
+      "slimclaw": { "enabled": true }
+    }
+  }
+}
+```
+
+### Method 3: From Source
 
 ```bash
 git clone https://github.com/evansantos/slimclaw ~/.openclaw/plugins/slimclaw
 cd ~/.openclaw/plugins/slimclaw
-npm install
-npm run build
+npm install && npm run build
 ```
+
+Then register the plugin in `~/.openclaw/openclaw.json` using the same configuration as Method 2.
 
 ## Configuration
 
-Create `slimclaw.config.json` in the plugin folder:
+Create a configuration file at `~/.openclaw/plugins/slimclaw/slimclaw.config.json`.
+
+### Minimal Configuration
+
+Start with this basic setup to enable shadow mode:
+
+```json
+{
+  "enabled": true,
+  "mode": "shadow"
+}
+```
+
+### Shadow Mode (Safe Default)
+
+Shadow mode observes and logs routing decisions without modifying requests:
 
 ```json
 {
   "enabled": true,
   "mode": "shadow",
-  "windowing": {
-    "enabled": true,
-    "maxMessages": 10,
-    "maxTokens": 4000,
-    "summarizeThreshold": 8
-  },
   "routing": {
     "enabled": true,
-    "allowDowngrade": true,
-    "minConfidence": 0.4,
-    "pinnedModels": ["anthropic/claude-opus-4-20250514"],
+    "shadowLogging": true
+  },
+  "dashboard": {
+    "enabled": true,
+    "port": 3333
+  }
+}
+```
+
+### With Routing Tiers
+
+Configure which models to use for different complexity levels:
+
+```json
+{
+  "enabled": true,
+  "mode": "shadow",
+  "routing": {
+    "enabled": true,
+    "shadowLogging": true,
     "tiers": {
       "simple": "anthropic/claude-3-haiku-20240307",
       "mid": "anthropic/claude-sonnet-4-20250514",
       "complex": "anthropic/claude-opus-4-20250514",
       "reasoning": "anthropic/claude-opus-4-20250514"
+    }
+  },
+  "dashboard": {
+    "enabled": true,
+    "port": 3333
+  }
+}
+```
+
+### With OpenRouter Cross-Provider Routing
+
+Route different model families to their optimal providers:
+
+```json
+{
+  "enabled": true,
+  "mode": "shadow",
+  "routing": {
+    "enabled": true,
+    "shadowLogging": true,
+    "tiers": {
+      "simple": "anthropic/claude-3-haiku-20240307",
+      "mid": "openai/gpt-4-turbo",
+      "complex": "anthropic/claude-opus-4-20250514",
+      "reasoning": "openai/o1-preview"
     },
     "tierProviders": {
       "openai/*": "openrouter",
@@ -82,15 +161,63 @@ Create `slimclaw.config.json` in the plugin folder:
     },
     "openRouterHeaders": {
       "HTTP-Referer": "https://slimclaw.dev",
-      "X-Title": "SlimClaw v0.2.0"
-    },
+      "X-Title": "SlimClaw"
+    }
+  },
+  "dashboard": {
+    "enabled": true,
+    "port": 3333
+  }
+}
+```
+
+### With Budget Enforcement
+
+Set daily/weekly spending limits with automatic tier downgrading:
+
+```json
+{
+  "enabled": true,
+  "mode": "shadow",
+  "routing": {
+    "enabled": true,
     "shadowLogging": true,
     "reasoningBudget": 10000,
-    "pricing": {
-      "anthropic/claude-sonnet-4-20250514": {
-        "inputPer1k": 0.003,
-        "outputPer1k": 0.015
-      }
+    "allowDowngrade": true,
+    "tiers": {
+      "simple": "anthropic/claude-3-haiku-20240307",
+      "mid": "anthropic/claude-sonnet-4-20250514",
+      "complex": "anthropic/claude-opus-4-20250514",
+      "reasoning": "anthropic/claude-opus-4-20250514"
+    }
+  },
+  "dashboard": {
+    "enabled": true,
+    "port": 3333
+  }
+}
+```
+
+### With Dynamic Pricing
+
+Automatically fetch live pricing from OpenRouter API:
+
+```json
+{
+  "enabled": true,
+  "mode": "shadow",
+  "routing": {
+    "enabled": true,
+    "shadowLogging": true,
+    "tiers": {
+      "simple": "anthropic/claude-3-haiku-20240307",
+      "mid": "openai/gpt-4-turbo",
+      "complex": "anthropic/claude-opus-4-20250514",
+      "reasoning": "openai/o1-preview"
+    },
+    "tierProviders": {
+      "openai/*": "openrouter",
+      "anthropic/*": "anthropic"
     },
     "dynamicPricing": {
       "enabled": true,
@@ -98,30 +225,31 @@ Create `slimclaw.config.json` in the plugin folder:
       "refreshIntervalMs": 21600000,
       "timeoutMs": 10000,
       "apiUrl": "https://openrouter.ai/api/v1/models"
-    },
-    "latencyTracking": {
-      "enabled": true,
-      "bufferSize": 100,
-      "outlierThresholdMs": 60000
     }
-  },
-  "caching": {
-    "enabled": true,
-    "injectBreakpoints": true,
-    "minContentLength": 1000
-  },
-  "metrics": {
-    "enabled": true,
-    "logLevel": "summary",
-    "flushIntervalMs": 30000
   },
   "dashboard": {
     "enabled": true,
-    "port": 3333,
-    "cors": false
+    "port": 3333
   }
 }
 ```
+
+### Verification
+
+After configuration, restart the OpenClaw gateway to load the plugin:
+
+```bash
+# Restart gateway to load plugin
+openclaw gateway restart
+
+# Check it loaded successfully
+tail -5 ~/.openclaw/logs/gateway.log | grep SlimClaw
+
+# Check the dashboard is running
+curl http://localhost:3333/api/stats
+```
+
+You should see log entries indicating SlimClaw loaded successfully and the dashboard should respond with current metrics. Access the web UI at `http://localhost:3333` to monitor routing decisions in real-time.
 
 ## Usage
 

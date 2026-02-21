@@ -2,6 +2,35 @@
 
 All notable changes to SlimClaw are documented here.
 
+## [0.3.0] — 2026-02-21
+
+### Added
+
+#### Phase 3a: Dynamic Pricing & Latency Tracking
+- Dynamic pricing cache with OpenRouter API integration (6h TTL)
+- Latency tracker with per-model/provider P50/P95/P99 percentile stats
+- Sliding window latency data (configurable retention)
+
+#### Phase 3b: Budget Enforcement & A/B Testing (Shadow Mode)
+- **BudgetTracker** — daily/weekly spending caps per tier with sliding window resets
+- Enforcement actions: `downgrade`, `block`, `alert-only` (configurable per tier)
+- Alert thresholds with callback support (e.g., 80% budget warning)
+- **ABTestManager** — deterministic hash-based experiment assignment
+- Outcome tracking with statistical significance testing (chi-squared)
+- Experiment lifecycle: active → concluded with winner selection
+- Kahan summation for floating-point precision in cost accumulation
+- Budget persistence foundation (`serialize`/`fromSnapshot`) for Phase 2b
+
+### Changed
+- Extended config schema with Zod validation for `budget` and `abTesting` sections
+- `ROUTING_VERSION` bumped to `0.3.0`
+- `DEFAULT_ROUTING_CONFIG` extended with budget + A/B testing defaults
+- README rewritten with progressive installation and configuration guides
+
+### Stats
+- 706 tests across 48 test files (0 failures)
+- Full review pipeline: BUG ✅ → ARCH ✅ (6 findings fixed) → SPEC ✅
+
 ## [0.2.0] — 2026-02-20
 
 ### Added
