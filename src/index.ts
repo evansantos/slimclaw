@@ -582,6 +582,84 @@ const slimclawPlugin = {
     }
 
     // =========================================================================
+    // Hook: before_model_resolve - Active routing (Phase 2b)
+    // =========================================================================
+    if (pluginConfig.routing.enabled && pluginConfig.routing.mode === 'active') {
+      api.on('before_model_resolve', (event: { prompt: string }, ctx: { agentId?: string; sessionKey?: string }) => {
+        try {
+          if (!event.prompt) return;
+
+          // 1. Classify the prompt
+          const classification = classifyWithRouter(
+            [{ role: 'user', content: event.prompt }] as Message[],
+            pluginConfig.routing.tiers as Record<string, unknown>
+          );
+
+          api.logger.info(
+            `[SlimClaw] Active routing: tier=${classification.tier} confidence=${(classification.confidence * 100).toFixed(0)}%`
+          );
+
+          // 2. Build routing context
+          const routingCtx = {
+            headers: {},
+            agentId: ctx.agentId,
+            sessionKey: ctx.sessionKey,
+          };
+
+          // 3. Full routing pipeline
+          const fullConfig: SlimClawConfig = {
+            ...DEFAULT_CONFIG,
+            ...pluginConfig,
+            routing: {
+              ...DEFAULT_CONFIG.routing,
+              ...pluginConfig.routing,
+            },
+          };
+
+          const routingOutput = makeRoutingDecision(
+            classification,
+            fullConfig,
+            routingCtx,
+            `active-${Date.now()}`,
+            {
+              ...(budgetTracker ? { budgetTracker } : {}),
+              ...(abTestManager ? { abTestManager } : {}),
+            }
+          );
+
+          // 4. Log decision
+          const shadow = routingOutput.shadow;
+          api.logger.info(
+            `[SlimClaw] Active routing decision: → ${shadow?.recommendedModel || routingOutput.model} ` +
+            `(${shadow?.recommendedProvider?.provider || 'unknown'}) applied=${routingOutput.applied}`
+          );
+
+          // 5. Return override if routing suggests a model
+          if (routingOutput.applied && routingOutput.model) {
+            // Extract provider from tierProviders or model prefix
+            const modelId = routingOutput.model;
+            const providerName = shadow?.recommendedProvider?.provider || 
+              modelId.split('/')[0] || undefined;
+            
+            return {
+              modelOverride: modelId,
+              ...(providerName ? { providerOverride: providerName } : {}),
+            };
+          }
+
+          return; // No override
+        } catch (error) {
+          api.logger.info(
+            `[SlimClaw] before_model_resolve error: ${error instanceof Error ? error.message : String(error)}`
+          );
+          return; // Graceful fallback
+        }
+      });
+
+      api.logger.info('[SlimClaw] ✅ Active routing enabled via before_model_resolve hook');
+    }
+
+    // =========================================================================
     // Hook: llm_input - Track request metrics
     // =========================================================================
     api.on('llm_input', (event, _ctx) => {
@@ -657,7 +735,11 @@ const slimclawPlugin = {
         // === SHADOW ROUTING DECISION (Phase 2a: Shadow Mode) ===
         let shadowRecommendation = null;
         let fullRoutingOutput;
-        if (pluginConfig.routing.enabled && pluginConfig.routing.shadowLogging && routingResult) {
+        const shouldShadowLog = pluginConfig.routing.mode 
+          ? (pluginConfig.routing.mode === 'shadow' || pluginConfig.routing.mode === 'active')
+          : pluginConfig.routing.shadowLogging;
+
+        if (pluginConfig.routing.enabled && shouldShadowLog && routingResult) {
           try {
             // Convert the routingResult to the expected classification format
             const classification = {
