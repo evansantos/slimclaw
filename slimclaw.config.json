@@ -1,6 +1,5 @@
 {
   "enabled": true,
-  "mode": "shadow",
   "windowing": {
     "enabled": true,
     "maxMessages": 10,
@@ -9,6 +8,7 @@
   },
   "routing": {
     "enabled": true,
+    "mode": "active",
     "allowDowngrade": true,
     "minConfidence": 0.4,
     "pinnedModels": [],

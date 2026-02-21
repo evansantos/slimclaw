@@ -109,8 +109,9 @@ export function resolveModel(
     // Normal routing: map tier to model
     const targetModel = getTierModel(classification.tier, config);
     
-    // Check if downgrade is allowed
-    if (!config.allowDowngrade && isModelDowngrade(originalModel, targetModel)) {
+    // Check if downgrade is allowed (skip for virtual models — they have no inherent tier)
+    const isVirtualModel = originalModel.startsWith('slimclaw/');
+    if (!isVirtualModel && !config.allowDowngrade && isModelDowngrade(originalModel, targetModel)) {
       return createDecision({
         originalModel,
         targetModel: originalModel, // Keep original model

@@ -102,6 +102,50 @@ describe("SlimClawConfigSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  test("should accept valid routing mode values", () => {
+    const validModes = ["shadow", "active", "off"];
+    
+    validModes.forEach(mode => {
+      const config = {
+        routing: {
+          mode,
+        },
+      };
+      
+      const result = SlimClawConfigSchema.safeParse(config);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.routing.mode).toBe(mode);
+      }
+    });
+  });
+
+  test("should reject invalid routing mode", () => {
+    const config = {
+      routing: {
+        mode: "invalid",
+      },
+    };
+    
+    const result = SlimClawConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toEqual(["routing", "mode"]);
+    }
+  });
+
+  test("should default routing mode to 'shadow'", () => {
+    const config = {
+      routing: {},
+    };
+    
+    const result = SlimClawConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.routing.mode).toBe("shadow");
+    }
+  });
+
   test("should accept partial nested configs", () => {
     const config = {
       windowing: {
@@ -328,6 +372,7 @@ describe("DEFAULT_CONFIG", () => {
     expect(DEFAULT_CONFIG.windowing.maxMessages).toBe(10);
     expect(DEFAULT_CONFIG.windowing.summarizeThreshold).toBe(8);
     expect(DEFAULT_CONFIG.routing.enabled).toBe(false); // P1 - disabled for MVP
+    expect(DEFAULT_CONFIG.routing.mode).toBe("shadow"); // Default routing mode
     expect(DEFAULT_CONFIG.caching.enabled).toBe(true);
     expect(DEFAULT_CONFIG.caching.minContentLength).toBe(1000);
     expect(DEFAULT_CONFIG.metrics.enabled).toBe(true);

@@ -39,6 +39,14 @@ export {
 import { createDashboard } from './dashboard/index.js';
 import type { MetricsCollector, OptimizerMetrics, MetricsStats } from './metrics/index.js';
 
+// Proxy provider imports
+import {
+  createSlimClawProvider,
+  createSidecarRequestHandler,
+  SidecarServer,
+  type ProviderCredentials
+} from './provider/index.js';
+
 // Config schema for OpenClaw
 const slimclawConfigSchema = {
   type: 'object' as const,
@@ -370,6 +378,25 @@ function estimateModelCost(
   return ((inputTokens + outputTokens) / 1000) * costPer1k;
 }
 
+/**
+ * Extract provider credentials from OpenClaw config
+ */
+function extractProviderCredentials(config: any): Map<string, ProviderCredentials> {
+  const credentials = new Map<string, ProviderCredentials>();
+  if (config?.models?.providers) {
+    for (const [id, providerConfig] of Object.entries(config.models.providers)) {
+      const pc = providerConfig as any;
+      if (pc.baseUrl) {
+        credentials.set(id, {
+          baseUrl: pc.baseUrl,
+          apiKey: pc.apiKey || process.env[`${id.toUpperCase()}_API_KEY`] || ''
+        });
+      }
+    }
+  }
+  return credentials;
+}
+
 // Plugin definition
 const slimclawPlugin = {
   id: 'slimclaw',
@@ -422,11 +449,14 @@ const slimclawPlugin = {
         ...typedConfig.routing,
         tierProviders: typedConfig.routing.tierProviders ?? {},
         openRouterHeaders: typedConfig.routing.openRouterHeaders ?? {},
+        budget: typedConfig.routing.budget ?? { enabled: false, daily: {}, weekly: {} },
+        abTesting: typedConfig.routing.abTesting ?? { enabled: false, experiments: [] },
       } as any,
       dashboard: {
         enabled: false, // Dashboard config not in new schema yet
         port: 3333,
       },
+      proxy: rawConfig.proxy || { enabled: false }, // Add proxy config from raw config
     };
 
     if (pluginConfig.routing.enabled) {
@@ -474,6 +504,159 @@ const slimclawPlugin = {
     if (!pluginConfig.enabled) {
       api.logger.info('SlimClaw is disabled');
       return;
+    }
+
+    // =========================================================================
+    // PROXY PROVIDER REGISTRATION (Phase 1)
+    // =========================================================================
+    if (pluginConfig.proxy?.enabled) {
+      try {
+        const providerCredentials = extractProviderCredentials(api.config);
+        
+        if (providerCredentials.size === 0) {
+          api.logger.info('[SlimClaw] Warning: No provider credentials found, proxy may not work');
+        } else {
+          const providerList = Array.from(providerCredentials.keys()).join(', ');
+          api.logger.info(`[SlimClaw] Found credentials for providers: ${providerList}`);
+        }
+
+        const sidecarPort = pluginConfig.proxy.port || 3334;
+        const requestHandler = createSidecarRequestHandler({
+          port: sidecarPort,
+          virtualModels: pluginConfig.proxy.virtualModels || { auto: { enabled: true } },
+          providerCredentials,
+          slimclawConfig: typedConfig,
+          timeout: pluginConfig.proxy.requestTimeout || 120000,
+          services: {
+            ...(budgetTracker ? { budgetTracker } : {}),
+            ...(abTestManager ? { abTestManager } : {}),
+            ...(latencyTracker ? { latencyTracker } : {})
+          }
+        });
+
+        const sidecarServer = new SidecarServer({
+          port: sidecarPort,
+          timeout: pluginConfig.proxy.requestTimeout || 120000,
+          handler: requestHandler
+        });
+
+        const provider = createSlimClawProvider({
+          port: sidecarPort,
+          virtualModels: pluginConfig.proxy.virtualModels || { auto: { enabled: true } },
+          providerCredentials,
+          slimclawConfig: typedConfig,
+          timeout: pluginConfig.proxy.requestTimeout || 120000,
+          services: {
+            ...(budgetTracker ? { budgetTracker } : {}),
+            ...(abTestManager ? { abTestManager } : {}),
+            ...(latencyTracker ? { latencyTracker } : {})
+          }
+        });
+
+        if (api.registerProvider) {
+          api.registerProvider(provider);
+        }
+
+        if (api.registerService) {
+          api.registerService({
+            id: 'slimclaw-sidecar',
+            name: 'SlimClaw Proxy Sidecar',
+            start: async () => {
+              await sidecarServer.start();
+              api.logger.info(`[SlimClaw] Sidecar server started on port ${sidecarServer.getPort()}`);
+            },
+            stop: async () => {
+              if (sidecarServer.isRunning()) {
+                await sidecarServer.stop();
+                api.logger.info('[SlimClaw] Sidecar server stopped');
+              }
+            }
+          });
+        }
+
+        api.logger.info(`[SlimClaw] Provider proxy registered on port ${sidecarPort}`);
+        api.logger.info(`[SlimClaw] To use: set model "slimclaw/auto" in OpenClaw config`);
+      } catch (error) {
+        api.logger.info(`[SlimClaw] Failed to register proxy provider: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+
+    // =========================================================================
+    // Hook: before_model_resolve - Active routing (Phase 2b)
+    // =========================================================================
+    if (pluginConfig.routing.enabled && pluginConfig.routing.mode === 'active') {
+      api.on('before_model_resolve', (event: { prompt: string }, ctx: { agentId?: string; sessionKey?: string }) => {
+        try {
+          if (!event.prompt) return;
+
+          // 1. Classify the prompt
+          const classification = classifyWithRouter(
+            [{ role: 'user', content: event.prompt }] as Message[],
+            pluginConfig.routing.tiers as Record<string, unknown>
+          );
+
+          api.logger.info(
+            `[SlimClaw] Active routing: tier=${classification.tier} confidence=${(classification.confidence * 100).toFixed(0)}%`
+          );
+
+          // 2. Build routing context
+          const routingCtx = {
+            headers: {},
+            agentId: ctx.agentId,
+            sessionKey: ctx.sessionKey,
+          };
+
+          // 3. Full routing pipeline
+          const fullConfig: SlimClawConfig = {
+            ...DEFAULT_CONFIG,
+            ...pluginConfig,
+            routing: {
+              ...DEFAULT_CONFIG.routing,
+              ...pluginConfig.routing,
+            },
+          };
+
+          const routingOutput = makeRoutingDecision(
+            classification,
+            fullConfig,
+            routingCtx,
+            `active-${Date.now()}`,
+            {
+              ...(budgetTracker ? { budgetTracker } : {}),
+              ...(abTestManager ? { abTestManager } : {}),
+            }
+          );
+
+          // 4. Log decision
+          const shadow = routingOutput.shadow;
+          api.logger.info(
+            `[SlimClaw] Active routing decision: → ${shadow?.recommendedModel || routingOutput.model} ` +
+            `(${shadow?.recommendedProvider?.provider || 'unknown'}) applied=${routingOutput.applied}`
+          );
+
+          // 5. Return override if routing suggests a model
+          if (routingOutput.applied && routingOutput.model) {
+            // Extract provider from tierProviders or model prefix
+            const modelId = routingOutput.model;
+            const providerName = shadow?.recommendedProvider?.provider || 
+              modelId.split('/')[0] || undefined;
+            
+            return {
+              modelOverride: modelId,
+              ...(providerName ? { providerOverride: providerName } : {}),
+            };
+          }
+
+          return; // No override
+        } catch (error) {
+          api.logger.info(
+            `[SlimClaw] before_model_resolve error: ${error instanceof Error ? error.message : String(error)}`
+          );
+          return; // Graceful fallback
+        }
+      });
+
+      api.logger.info('[SlimClaw] ✅ Active routing enabled via before_model_resolve hook');
     }
 
     // =========================================================================
@@ -552,7 +735,11 @@ const slimclawPlugin = {
         // === SHADOW ROUTING DECISION (Phase 2a: Shadow Mode) ===
         let shadowRecommendation = null;
         let fullRoutingOutput;
-        if (pluginConfig.routing.enabled && pluginConfig.routing.shadowLogging && routingResult) {
+        const shouldShadowLog = pluginConfig.routing.mode 
+          ? (pluginConfig.routing.mode === 'shadow' || pluginConfig.routing.mode === 'active')
+          : pluginConfig.routing.shadowLogging;
+
+        if (pluginConfig.routing.enabled && shouldShadowLog && routingResult) {
           try {
             // Convert the routingResult to the expected classification format
             const classification = {
