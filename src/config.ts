@@ -159,6 +159,23 @@ export const SlimClawConfigSchema = z.object({
     /** Enable colors in console output */
     colors: z.boolean().default(true),
   }).default({}),
+
+  proxy: z.object({
+    enabled: z.boolean().default(false),
+    port: z.number().int().min(1024).max(65535).default(3334),
+    defaultApi: z.enum(['openai-completions', 'anthropic-messages']).default('openai-completions'),
+    virtualModels: z.object({
+      auto: z.object({ enabled: z.boolean().default(true) }).default({ enabled: true }),
+    }).default({}),
+    providerOverrides: z.record(z.object({
+      baseUrl: z.string().optional(),
+      apiKeyEnv: z.string().optional(),
+      apiKey: z.string().optional(),
+    })).default({}),
+    requestTimeout: z.number().int().min(5000).default(120000),
+    retryOnError: z.boolean().default(false),
+    fallbackModel: z.string().nullable().default(null),
+  }).default({}),
 });
 
 export type SlimClawConfig = z.infer<typeof SlimClawConfigSchema>;
@@ -233,6 +250,18 @@ export const DEFAULT_CONFIG: SlimClawConfig = {
     consoleOutput: true,
     includeStackTrace: true,
     colors: true,
+  },
+  proxy: {
+    enabled: false,
+    port: 3334,
+    defaultApi: "openai-completions" as const,
+    virtualModels: {
+      auto: { enabled: true },
+    },
+    providerOverrides: {},
+    requestTimeout: 120000,
+    retryOnError: false,
+    fallbackModel: null,
   },
 };
 
