@@ -182,7 +182,7 @@ export function createSidecarRequestHandler(config: SlimClawProviderConfig): Sid
       // TODO: Track metrics and latency (Phase 1 scope - basic forwarding only)
 
       return response;
-    } catch {
+    } catch (error) {
       console.error('[SlimClaw] Sidecar request error:', error);
 
       return new Response(

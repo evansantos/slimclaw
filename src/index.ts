@@ -674,14 +674,13 @@ const slimclawPlugin = {
 
             // 5. Return override if routing suggests a model
             if (routingOutput.applied && routingOutput.model) {
-              // Extract provider from tierProviders or model prefix
               const modelId = routingOutput.model;
-              const providerName =
-                shadow?.recommendedProvider?.provider || modelId.split('/')[0] || undefined;
 
+              // modelId already contains provider prefix (e.g. "anthropic/claude-sonnet-4-20250514")
+              // Do NOT pass providerOverride — OpenClaw would prepend it again causing
+              // "anthropic/anthropic/claude-sonnet-4-20250514" (model_not_found)
               return {
                 modelOverride: modelId,
-                ...(providerName ? { providerOverride: providerName } : {}),
               };
             }
 

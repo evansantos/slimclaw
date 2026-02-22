@@ -176,7 +176,7 @@ export class DynamicPricingCache {
       this.fetching = false;
 
       return processed > 0;
-    } catch {
+    } catch (error) {
       this.fetching = false;
 
       // Log error but don't throw - graceful degradation
