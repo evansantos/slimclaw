@@ -13,10 +13,10 @@ const mockMakeRoutingDecision = vi.mocked(makeRoutingDecision);
 
 describe('Hook: before_model_resolve', () => {
   let mockApi: any;
-  
+
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Create mock API
     mockApi = {
       on: vi.fn(),
@@ -46,12 +46,12 @@ describe('Hook: before_model_resolve', () => {
         mode: 'active',
         tiers: {
           simple: 'haiku',
-          complex: 'sonnet'
-        }
+          complex: 'sonnet',
+        },
       },
       proxy: {
-        enabled: false // Disable proxy to focus on hooks
-      }
+        enabled: false, // Disable proxy to focus on hooks
+      },
     };
 
     // Initialize plugin
@@ -59,12 +59,12 @@ describe('Hook: before_model_resolve', () => {
 
     // Verify that api.on was called with before_model_resolve
     const beforeModelResolveCalls = mockApi.on.mock.calls.filter(
-      call => call[0] === 'before_model_resolve'
+      (call) => call[0] === 'before_model_resolve',
     );
-    
+
     expect(beforeModelResolveCalls).toHaveLength(1);
     expect(mockApi.logger.info).toHaveBeenCalledWith(
-      '[SlimClaw] ✅ Active routing enabled via before_model_resolve hook'
+      '[SlimClaw] ✅ Active routing enabled via before_model_resolve hook',
     );
   });
 
@@ -77,12 +77,12 @@ describe('Hook: before_model_resolve', () => {
         mode: 'shadow',
         tiers: {
           simple: 'haiku',
-          complex: 'sonnet'
-        }
+          complex: 'sonnet',
+        },
       },
       proxy: {
-        enabled: false
-      }
+        enabled: false,
+      },
     };
 
     // Initialize plugin
@@ -90,9 +90,9 @@ describe('Hook: before_model_resolve', () => {
 
     // Verify that api.on was NOT called with before_model_resolve
     const beforeModelResolveCalls = mockApi.on.mock.calls.filter(
-      call => call[0] === 'before_model_resolve'
+      (call) => call[0] === 'before_model_resolve',
     );
-    
+
     expect(beforeModelResolveCalls).toHaveLength(0);
   });
 
@@ -102,11 +102,11 @@ describe('Hook: before_model_resolve', () => {
       enabled: true,
       routing: {
         enabled: false,
-        mode: 'active'
+        mode: 'active',
       },
       proxy: {
-        enabled: false
-      }
+        enabled: false,
+      },
     };
 
     // Initialize plugin
@@ -114,9 +114,9 @@ describe('Hook: before_model_resolve', () => {
 
     // Verify that api.on was NOT called with before_model_resolve
     const beforeModelResolveCalls = mockApi.on.mock.calls.filter(
-      call => call[0] === 'before_model_resolve'
+      (call) => call[0] === 'before_model_resolve',
     );
-    
+
     expect(beforeModelResolveCalls).toHaveLength(0);
   });
 
@@ -129,19 +129,19 @@ describe('Hook: before_model_resolve', () => {
         mode: 'active',
         tiers: {
           simple: 'anthropic/haiku',
-          complex: 'anthropic/sonnet'
-        }
+          complex: 'anthropic/sonnet',
+        },
       },
       proxy: {
-        enabled: false
-      }
+        enabled: false,
+      },
     };
 
     // Mock classifier to return complex tier
     mockClassifyWithRouter.mockReturnValue({
       tier: 'complex',
       confidence: 0.9,
-      signals: ['length', 'technical']
+      signals: ['length', 'technical'],
     });
 
     // Mock routing decision
@@ -152,9 +152,9 @@ describe('Hook: before_model_resolve', () => {
         recommendedModel: 'anthropic/sonnet',
         recommendedProvider: {
           provider: 'anthropic',
-          model: 'sonnet'
-        }
-      }
+          model: 'sonnet',
+        },
+      },
     });
 
     // Initialize plugin
@@ -162,32 +162,31 @@ describe('Hook: before_model_resolve', () => {
 
     // Extract the hook handler
     const beforeModelResolveCalls = mockApi.on.mock.calls.filter(
-      call => call[0] === 'before_model_resolve'
+      (call) => call[0] === 'before_model_resolve',
     );
     expect(beforeModelResolveCalls).toHaveLength(1);
-    
+
     const hookHandler = beforeModelResolveCalls[0][1];
 
     // Test the hook handler
-    const event = { prompt: 'This is a complex technical question about machine learning algorithms' };
+    const event = {
+      prompt: 'This is a complex technical question about machine learning algorithms',
+    };
     const ctx = { agentId: 'test-agent', sessionKey: 'test-session' };
 
     const result = hookHandler(event, ctx);
 
-    // Verify the result
+    // Verify the result — providerOverride is intentionally omitted
+    // to prevent OpenClaw from prepending provider twice (anthropic/anthropic/...)
     expect(result).toEqual({
       modelOverride: 'anthropic/sonnet',
-      providerOverride: 'anthropic'
     });
 
     // Verify mocks were called correctly
-    expect(mockClassifyWithRouter).toHaveBeenCalledWith(
-      [{ role: 'user', content: event.prompt }],
-      {
-        simple: 'anthropic/haiku',
-        complex: 'anthropic/sonnet'
-      }
-    );
+    expect(mockClassifyWithRouter).toHaveBeenCalledWith([{ role: 'user', content: event.prompt }], {
+      simple: 'anthropic/haiku',
+      complex: 'anthropic/sonnet',
+    });
 
     expect(mockMakeRoutingDecision).toHaveBeenCalledWith(
       { tier: 'complex', confidence: 0.9, signals: ['length', 'technical'] },
@@ -196,9 +195,9 @@ describe('Hook: before_model_resolve', () => {
         headers: {},
         agentId: ctx.agentId,
         sessionKey: ctx.sessionKey,
-      },
+      } as any,
       expect.stringMatching(/^active-\d+$/),
-      expect.any(Object) // services
+      expect.any(Object), // services
     );
   });
 
@@ -210,12 +209,12 @@ describe('Hook: before_model_resolve', () => {
         enabled: true,
         mode: 'active',
         tiers: {
-          simple: 'haiku'
-        }
+          simple: 'haiku',
+        },
       },
       proxy: {
-        enabled: false
-      }
+        enabled: false,
+      },
     };
 
     // Mock classifier to throw error
@@ -228,7 +227,7 @@ describe('Hook: before_model_resolve', () => {
 
     // Extract the hook handler
     const beforeModelResolveCalls = mockApi.on.mock.calls.filter(
-      call => call[0] === 'before_model_resolve'
+      (call) => call[0] === 'before_model_resolve',
     );
     const hookHandler = beforeModelResolveCalls[0][1];
 
@@ -241,7 +240,7 @@ describe('Hook: before_model_resolve', () => {
     // Verify error handling
     expect(result).toBeUndefined();
     expect(mockApi.logger.info).toHaveBeenCalledWith(
-      '[SlimClaw] before_model_resolve error: Classification failed'
+      '[SlimClaw] before_model_resolve error: Classification failed',
     );
   });
 
@@ -253,12 +252,12 @@ describe('Hook: before_model_resolve', () => {
         enabled: true,
         mode: 'active',
         tiers: {
-          simple: 'haiku'
-        }
+          simple: 'haiku',
+        },
       },
       proxy: {
-        enabled: false
-      }
+        enabled: false,
+      },
     };
 
     // Initialize plugin
@@ -266,7 +265,7 @@ describe('Hook: before_model_resolve', () => {
 
     // Extract the hook handler
     const beforeModelResolveCalls = mockApi.on.mock.calls.filter(
-      call => call[0] === 'before_model_resolve'
+      (call) => call[0] === 'before_model_resolve',
     );
     const hookHandler = beforeModelResolveCalls[0][1];
 
@@ -290,26 +289,26 @@ describe('Hook: before_model_resolve', () => {
         enabled: true,
         mode: 'active',
         tiers: {
-          simple: 'haiku'
-        }
+          simple: 'haiku',
+        },
       },
       proxy: {
-        enabled: false
-      }
+        enabled: false,
+      },
     };
 
     // Mock classifier
     mockClassifyWithRouter.mockReturnValue({
       tier: 'simple',
       confidence: 0.5,
-      signals: []
+      signals: [],
     });
 
     // Mock routing decision with applied: false
     mockMakeRoutingDecision.mockReturnValue({
       model: 'haiku',
       applied: false,
-      shadow: null
+      shadow: null,
     });
 
     // Initialize plugin
@@ -317,7 +316,7 @@ describe('Hook: before_model_resolve', () => {
 
     // Extract the hook handler
     const beforeModelResolveCalls = mockApi.on.mock.calls.filter(
-      call => call[0] === 'before_model_resolve'
+      (call) => call[0] === 'before_model_resolve',
     );
     const hookHandler = beforeModelResolveCalls[0][1];
 
@@ -339,19 +338,19 @@ describe('Hook: before_model_resolve', () => {
         enabled: true,
         mode: 'active',
         tiers: {
-          complex: 'openrouter/anthropic/sonnet'
-        }
+          complex: 'openrouter/anthropic/sonnet',
+        },
       },
       proxy: {
-        enabled: false
-      }
+        enabled: false,
+      },
     };
 
     // Mock classifier
     mockClassifyWithRouter.mockReturnValue({
       tier: 'complex',
       confidence: 0.9,
-      signals: ['technical']
+      signals: ['technical'],
     });
 
     // Mock routing decision with shadow but no provider info
@@ -360,8 +359,8 @@ describe('Hook: before_model_resolve', () => {
       applied: true,
       shadow: {
         recommendedModel: 'openrouter/anthropic/sonnet',
-        recommendedProvider: null // No provider info
-      }
+        recommendedProvider: null, // No provider info
+      },
     });
 
     // Initialize plugin
@@ -369,7 +368,7 @@ describe('Hook: before_model_resolve', () => {
 
     // Extract the hook handler
     const beforeModelResolveCalls = mockApi.on.mock.calls.filter(
-      call => call[0] === 'before_model_resolve'
+      (call) => call[0] === 'before_model_resolve',
     );
     const hookHandler = beforeModelResolveCalls[0][1];
 
@@ -379,10 +378,9 @@ describe('Hook: before_model_resolve', () => {
 
     const result = hookHandler(event, ctx);
 
-    // Verify provider is extracted from model prefix
+    // Verify only modelOverride is returned (no providerOverride to avoid duplication)
     expect(result).toEqual({
       modelOverride: 'openrouter/anthropic/sonnet',
-      providerOverride: 'openrouter'
     });
   });
 
@@ -394,19 +392,19 @@ describe('Hook: before_model_resolve', () => {
         enabled: true,
         mode: 'active',
         tiers: {
-          simple: 'haiku' // No slash, can't extract provider
-        }
+          simple: 'haiku', // No slash, can't extract provider
+        },
       },
       proxy: {
-        enabled: false
-      }
+        enabled: false,
+      },
     };
 
     // Mock classifier
     mockClassifyWithRouter.mockReturnValue({
       tier: 'simple',
       confidence: 0.8,
-      signals: []
+      signals: [],
     });
 
     // Mock routing decision
@@ -415,8 +413,8 @@ describe('Hook: before_model_resolve', () => {
       applied: true,
       shadow: {
         recommendedModel: 'haiku',
-        recommendedProvider: null
-      }
+        recommendedProvider: null,
+      },
     });
 
     // Initialize plugin
@@ -424,7 +422,7 @@ describe('Hook: before_model_resolve', () => {
 
     // Extract the hook handler
     const beforeModelResolveCalls = mockApi.on.mock.calls.filter(
-      call => call[0] === 'before_model_resolve'
+      (call) => call[0] === 'before_model_resolve',
     );
     const hookHandler = beforeModelResolveCalls[0][1];
 
@@ -434,10 +432,9 @@ describe('Hook: before_model_resolve', () => {
 
     const result = hookHandler(event, ctx);
 
-    // Verify model override is returned (provider extraction still works even without slash)
+    // Verify only modelOverride is returned
     expect(result).toEqual({
       modelOverride: 'haiku',
-      providerOverride: 'haiku'
     });
   });
 });
