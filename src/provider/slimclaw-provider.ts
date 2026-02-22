@@ -1,8 +1,16 @@
 // Create src/provider/slimclaw-provider.ts
 import type { SlimClawConfig } from '../config.js';
 import type { SidecarRequest } from './sidecar-server.js';
-import { getVirtualModelDefinitions, parseVirtualModelId, type VirtualModelConfig } from './virtual-models.js';
-import { RequestForwarder, type ProviderCredentials, type ForwardingRequest } from './request-forwarder.js';
+import {
+  getVirtualModelDefinitions,
+  parseVirtualModelId,
+  type VirtualModelConfig,
+} from './virtual-models.js';
+import {
+  RequestForwarder,
+  type ProviderCredentials,
+  type ForwardingRequest,
+} from './request-forwarder.js';
 import { classifyWithRouter } from '../classifier/index.js';
 import { makeRoutingDecision } from '../routing/index.js';
 import type { BudgetTracker } from '../routing/budget-tracker.js';
@@ -19,33 +27,43 @@ export interface ProviderPlugin {
   auth: AuthConfig[];
 }
 
+export type ModelApi =
+  | 'openai-completions'
+  | 'openai-responses'
+  | 'anthropic-messages'
+  | 'google-generative-ai'
+  | 'github-copilot'
+  | 'bedrock-converse-stream'
+  | 'ollama';
+
 export interface ModelProviderConfig {
   baseUrl: string;
-  api: string;
+  api: ModelApi;
   models: ModelDefinition[];
 }
 
 export interface ModelDefinition {
   id: string;
   name: string;
-  api: string;
-  reasoning?: boolean;
-  input?: string[];
-  cost?: {
+  api?: ModelApi;
+  reasoning: boolean;
+  input: Array<'text' | 'image'>;
+  cost: {
     input: number;
     output: number;
     cacheRead: number;
     cacheWrite: number;
   };
-  contextWindow?: number;
-  maxTokens?: number;
+  contextWindow: number;
+  maxTokens: number;
+  headers?: Record<string, string>;
 }
 
 export interface AuthConfig {
   id: string;
   label: string;
-  kind: 'custom' | 'apiKey' | 'oauth';
-  run?: () => Promise<AuthResult>;
+  kind: 'oauth' | 'api_key' | 'token' | 'device_code' | 'custom';
+  run: () => Promise<AuthResult>;
 }
 
 export interface AuthResult {
@@ -93,15 +111,17 @@ export function createSlimClawProvider(config: SlimClawProviderConfig): Provider
     aliases: ['sc'],
     envVars: [], // No own API keys - delegates to downstream providers
     models: modelProvider,
-    auth: [{
-      id: 'none',
-      label: 'No authentication needed (proxy)',
-      kind: 'custom',
-      run: async () => ({
-        profiles: [],
-        notes: ['SlimClaw proxies through configured providers'],
-      }),
-    }],
+    auth: [
+      {
+        id: 'none',
+        label: 'No authentication needed (proxy)',
+        kind: 'custom',
+        run: async () => ({
+          profiles: [],
+          notes: ['SlimClaw proxies through configured providers'],
+        }),
+      },
+    ],
   };
 }
 
@@ -127,12 +147,14 @@ export function createSidecarRequestHandler(config: SlimClawProviderConfig): Sid
 
       // Phase 1: Only support auto model
       if (parsed.modelName !== 'auto') {
-        throw new Error(`Unsupported virtual model: ${requestedModel} (Phase 1 supports only slimclaw/auto)`);
+        throw new Error(
+          `Unsupported virtual model: ${requestedModel} (Phase 1 supports only slimclaw/auto)`,
+        );
       }
 
       // Run classification on the request messages
-      const classification = classifyWithRouter(messages, { 
-        originalModel: requestedModel 
+      const classification = classifyWithRouter(messages, {
+        originalModel: requestedModel,
       });
 
       // Make routing decision using existing pipeline
@@ -144,7 +166,7 @@ export function createSidecarRequestHandler(config: SlimClawProviderConfig): Sid
           headers: request.headers,
         },
         `sidecar-${Date.now()}`, // Generate unique runId
-        config.services
+        config.services,
       );
 
       // Forward to the resolved provider
@@ -156,14 +178,13 @@ export function createSidecarRequestHandler(config: SlimClawProviderConfig): Sid
       };
 
       const response = await forwarder.forwardRequest(forwardingRequest);
-      
-      // TODO: Track metrics and latency (Phase 1 scope - basic forwarding only)
-      
-      return response;
 
-    } catch (error) {
+      // TODO: Track metrics and latency (Phase 1 scope - basic forwarding only)
+
+      return response;
+    } catch {
       console.error('[SlimClaw] Sidecar request error:', error);
-      
+
       return new Response(
         JSON.stringify({
           error: error instanceof Error ? error.message : 'Unknown error',
@@ -171,7 +192,7 @@ export function createSidecarRequestHandler(config: SlimClawProviderConfig): Sid
         {
           status: 500,
           headers: { 'Content-Type': 'application/json' },
-        }
+        },
       );
     }
   };

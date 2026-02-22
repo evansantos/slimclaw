@@ -6,9 +6,16 @@
 export interface ModelDefinitionConfig {
   id: string;
   name: string;
-  api: string;
-  reasoning?: boolean;
-  input?: string[];
+  api?:
+    | 'openai-completions'
+    | 'openai-responses'
+    | 'anthropic-messages'
+    | 'google-generative-ai'
+    | 'github-copilot'
+    | 'bedrock-converse-stream'
+    | 'ollama';
+  reasoning: boolean;
+  input: Array<'text' | 'image'>;
   cost: {
     input: number;
     output: number;
@@ -17,6 +24,7 @@ export interface ModelDefinitionConfig {
   };
   contextWindow: number;
   maxTokens: number;
+  headers?: Record<string, string>;
 }
 
 /**
@@ -29,7 +37,7 @@ export interface VirtualModelConfig {
 
 /**
  * Static virtual model definitions for Phase 1 MVP
- * 
+ *
  * Each virtual model declares superset capabilities since actual capabilities
  * depend on the downstream model selected by the routing pipeline.
  */
@@ -37,17 +45,17 @@ export const VIRTUAL_MODELS: ModelDefinitionConfig[] = [
   {
     id: 'slimclaw/auto',
     name: 'SlimClaw Auto Router',
-    api: 'openai-completions',   // OpenAI format for OpenRouter compatibility
-    reasoning: true,             // May route to reasoning-capable models
-    input: ['text', 'image'],    // Superset of input types across all targets
-    cost: { 
-      input: 0,                  // Dynamic - depends on routed target
-      output: 0, 
-      cacheRead: 0, 
-      cacheWrite: 0 
+    api: 'openai-completions', // OpenAI format for OpenRouter compatibility
+    reasoning: true, // May route to reasoning-capable models
+    input: ['text', 'image'], // Superset of input types across all targets
+    cost: {
+      input: 0, // Dynamic - depends on routed target
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
     },
-    contextWindow: 200000,       // Max context window across all potential targets
-    maxTokens: 16384,           // Conservative max output tokens
+    contextWindow: 200000, // Max context window across all potential targets
+    maxTokens: 16384, // Conservative max output tokens
     // No provider-specific headers needed - handled by sidecar
   },
 ];
@@ -60,7 +68,7 @@ export function getVirtualModelDefinitions(config?: VirtualModelConfig): ModelDe
     return [...VIRTUAL_MODELS]; // Return all models if no config
   }
 
-  return VIRTUAL_MODELS.filter(model => {
+  return VIRTUAL_MODELS.filter((model) => {
     switch (model.id) {
       case 'slimclaw/auto':
         return config.auto?.enabled !== false; // Default enabled
@@ -95,7 +103,7 @@ export function parseVirtualModelId(modelId: string): {
   }
 
   const [provider, modelName] = modelId.split('/', 2);
-  
+
   if (!provider || !modelName) {
     throw new Error(`Invalid model ID format: ${modelId}`);
   }
@@ -103,6 +111,6 @@ export function parseVirtualModelId(modelId: string): {
   return {
     provider,
     modelName,
-    isVirtual: provider === 'slimclaw'
+    isVirtual: provider === 'slimclaw',
   };
 }

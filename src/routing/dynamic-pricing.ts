@@ -34,7 +34,7 @@ interface ModelPricing {
 interface OpenRouterModel {
   id: string;
   pricing: {
-    prompt: string;    // Per-token price as string
+    prompt: string; // Per-token price as string
     completion: string; // Per-token price as string
   };
 }
@@ -45,7 +45,7 @@ interface OpenRouterResponse {
 
 /**
  * Dynamic pricing cache with TTL-based refresh from OpenRouter API.
- * 
+ *
  * Provides live pricing data for routing decisions with graceful fallback
  * to hardcoded pricing when API is unavailable.
  */
@@ -62,7 +62,7 @@ export class DynamicPricingCache {
   /**
    * Get pricing for a model. Triggers background refresh if stale.
    * Returns synchronously - either cached data, or hardcoded fallback.
-   * 
+   *
    * @param model - Model ID (e.g., "openai/gpt-4.1-nano")
    * @returns Pricing data (never null)
    */
@@ -77,7 +77,7 @@ export class DynamicPricingCache {
     if (cached && !this.isStale(cached.fetchedAt)) {
       return {
         inputPer1k: cached.inputPer1k,
-        outputPer1k: cached.outputPer1k
+        outputPer1k: cached.outputPer1k,
       };
     }
 
@@ -90,7 +90,7 @@ export class DynamicPricingCache {
     if (cached) {
       return {
         inputPer1k: cached.inputPer1k,
-        outputPer1k: cached.outputPer1k
+        outputPer1k: cached.outputPer1k,
       };
     }
 
@@ -99,7 +99,7 @@ export class DynamicPricingCache {
 
   /**
    * Force refresh from OpenRouter API.
-   * 
+   *
    * @returns Promise that resolves to true on success, false on failure
    */
   async refresh(): Promise<boolean> {
@@ -118,7 +118,7 @@ export class DynamicPricingCache {
         headers: {
           'Content-Type': 'application/json',
         },
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       clearTimeout(timeout);
@@ -129,18 +129,25 @@ export class DynamicPricingCache {
 
       const jsonResponse = await response.json();
       const data = jsonResponse as OpenRouterResponse;
-      
+
       if (!data.data || !Array.isArray(data.data)) {
         throw new Error('Invalid API response format');
       }
 
       // Process and cache relevant models only
-      const relevantPrefixes = ['openai/', 'anthropic/', 'google/', 'deepseek/', 'meta-llama/', 'qwen/'];
+      const relevantPrefixes = [
+        'openai/',
+        'anthropic/',
+        'google/',
+        'deepseek/',
+        'meta-llama/',
+        'qwen/',
+      ];
       let processed = 0;
 
       for (const model of data.data) {
         // Filter to relevant providers only
-        if (!relevantPrefixes.some(prefix => model.id.startsWith(prefix))) {
+        if (!relevantPrefixes.some((prefix) => model.id.startsWith(prefix))) {
           continue;
         }
 
@@ -154,11 +161,11 @@ export class DynamicPricingCache {
               this.cache.set(model.id, {
                 inputPer1k,
                 outputPer1k,
-                fetchedAt: Date.now()
+                fetchedAt: Date.now(),
               });
               processed++;
             }
-          } catch (error) {
+          } catch {
             // Skip invalid pricing data
             continue;
           }
@@ -169,15 +176,16 @@ export class DynamicPricingCache {
       this.fetching = false;
 
       return processed > 0;
-
-    } catch (error) {
+    } catch {
       this.fetching = false;
-      
+
       // Log error but don't throw - graceful degradation
       if (typeof console !== 'undefined') {
-        console.warn(`[DynamicPricingCache] Fetch failed: ${error instanceof Error ? error.message : String(error)}`);
+        console.warn(
+          `[DynamicPricingCache] Fetch failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
-      
+
       return false;
     }
   }
@@ -196,7 +204,7 @@ export class DynamicPricingCache {
     return {
       models: this.cache.size,
       lastFetch: this.lastFetch,
-      stale: this.lastFetch ? this.isStale(this.lastFetch) : true
+      stale: this.lastFetch ? this.isStale(this.lastFetch) : true,
     };
   }
 
@@ -208,14 +216,14 @@ export class DynamicPricingCache {
     if (pricing) {
       return {
         inputPer1k: pricing.inputPer1k,
-        outputPer1k: pricing.outputPer1k
+        outputPer1k: pricing.outputPer1k,
       };
     }
 
     // Ultra-generic fallback for unknown models
     return {
       inputPer1k: 0.001, // $1 per million tokens
-      outputPer1k: 0.002  // $2 per million tokens
+      outputPer1k: 0.002, // $2 per million tokens
     };
   }
 
@@ -257,5 +265,5 @@ export const DEFAULT_DYNAMIC_PRICING_CONFIG: DynamicPricingConfig = {
   openRouterApiUrl: 'https://openrouter.ai/api/v1/models',
   cacheTtlMs: 6 * 60 * 60 * 1000, // 6 hours
   fetchTimeoutMs: 5000,
-  fallbackToHardcoded: true
+  fallbackToHardcoded: true,
 };

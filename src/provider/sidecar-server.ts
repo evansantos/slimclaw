@@ -8,14 +8,28 @@ export interface SidecarRequest {
 
 export type RequestHandler = (request: SidecarRequest) => Promise<Response>;
 
+export interface SidecarConfig {
+  port: number;
+  timeout?: number;
+  handler: RequestHandler;
+}
+
 export class SidecarServer {
   private server: Server;
   private handler: RequestHandler;
+  private port: number;
+  private running = false;
 
-  constructor(handler: RequestHandler) {
-    this.handler = handler;
+  constructor(handlerOrConfig: RequestHandler | SidecarConfig) {
+    if (typeof handlerOrConfig === 'function') {
+      this.handler = handlerOrConfig;
+      this.port = 3334;
+    } else {
+      this.handler = handlerOrConfig.handler;
+      this.port = handlerOrConfig.port;
+    }
     this.server = createServer((req, res) => {
-      this.handleRequest(req, res).catch(error => {
+      this.handleRequest(req, res).catch((error) => {
         console.error('Unhandled server error:', error);
         if (!res.headersSent) {
           res.writeHead(500, { 'Content-Type': 'text/plain' });
@@ -23,6 +37,26 @@ export class SidecarServer {
         }
       });
     });
+  }
+
+  async start(): Promise<void> {
+    await this.listen(this.port);
+    this.running = true;
+  }
+
+  async stop(): Promise<void> {
+    await this.close();
+    this.running = false;
+  }
+
+  getPort(): number {
+    const address = this.server.address();
+    if (address && typeof address === 'object') return address.port;
+    return this.port;
+  }
+
+  isRunning(): boolean {
+    return this.running;
   }
 
   async listen(port: number): Promise<number> {
@@ -48,7 +82,7 @@ export class SidecarServer {
         resolve();
         return;
       }
-      
+
       this.server.close((error?: Error) => {
         if (error) {
           reject(error);
@@ -92,11 +126,11 @@ export class SidecarServer {
     try {
       // Parse request body
       const body = await this.parseRequestBody(req);
-      
+
       // Prepare headers (only include content-type for compatibility with tests)
       const headers: Record<string, string> = {};
       if (req.headers['content-type']) {
-        headers['content-type'] = Array.isArray(req.headers['content-type']) 
+        headers['content-type'] = Array.isArray(req.headers['content-type'])
           ? req.headers['content-type'].join(', ')
           : req.headers['content-type'];
       }
@@ -104,12 +138,12 @@ export class SidecarServer {
       // Call handler
       const response = await this.handler({
         body,
-        headers
+        headers,
       });
 
       // Set response headers
       res.writeHead(response.status, response.statusText, {
-        'Content-Type': response.headers.get('content-type') || 'application/json'
+        'Content-Type': response.headers.get('content-type') || 'application/json',
       });
 
       // Stream response body
@@ -141,8 +175,8 @@ export class SidecarServer {
   private async parseRequestBody(req: IncomingMessage): Promise<any> {
     return new Promise((resolve, reject) => {
       let body = '';
-      
-      req.on('data', chunk => {
+
+      req.on('data', (chunk) => {
         body += chunk.toString();
       });
 
