@@ -363,11 +363,6 @@ let pluginConfig = {
 /**
  * Estimate token count (rough approximation)
  */
-function estimateTokens(text: string): number {
-  // ~4 chars per token for English, ~2-3 for code
-  return Math.ceil(text.length / 3.5);
-}
-
 /**
  * Estimate model cost for budget tracking
  */
@@ -412,7 +407,14 @@ function extractProviderCredentials(config: any): Map<string, ProviderCredential
   const credentials = new Map<string, ProviderCredentials>();
   if (config?.models?.providers) {
     for (const [id, providerConfig] of Object.entries(config.models.providers)) {
-      const pc = providerConfig as any;
+      if (
+        typeof providerConfig !== 'object' ||
+        providerConfig === null ||
+        !('baseUrl' in providerConfig)
+      ) {
+        continue;
+      }
+      const pc = providerConfig as { baseUrl?: string; apiKey?: string };
       if (pc.baseUrl) {
         credentials.set(id, {
           baseUrl: pc.baseUrl,
@@ -482,10 +484,10 @@ const slimclawPlugin = {
         abTesting: typedConfig.routing.abTesting ?? { enabled: false, experiments: [] },
       } as any,
       dashboard: {
-        enabled: false, // Dashboard config not in new schema yet
-        port: 3333,
+        enabled: typedConfig.dashboard?.enabled ?? false,
+        port: typedConfig.dashboard?.port ?? 3333,
       },
-      proxy: rawConfig.proxy || { enabled: false }, // Add proxy config from raw config
+      proxy: typedConfig.proxy || { enabled: false },
     } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
     if (pluginConfig.routing.enabled) {
@@ -676,9 +678,22 @@ const slimclawPlugin = {
             if (routingOutput.applied && routingOutput.model) {
               const modelId = routingOutput.model;
 
-              // modelId already contains provider prefix (e.g. "anthropic/claude-sonnet-4-20250514")
-              // Do NOT pass providerOverride — OpenClaw would prepend it again causing
-              // "anthropic/anthropic/claude-sonnet-4-20250514" (model_not_found)
+              // OpenClaw's resolveModel(provider, modelId) concatenates them as "provider/modelId".
+              // If modelId already has a provider prefix (e.g. "anthropic/claude-sonnet-4-5"),
+              // we must split it so OpenClaw doesn't double-prefix it.
+              const slashIdx = modelId.indexOf('/');
+              if (slashIdx > 0) {
+                const provider = modelId.substring(0, slashIdx);
+                const bareModel = modelId.substring(slashIdx + 1);
+                api.logger.info(
+                  `[SlimClaw] Returning override: provider=${provider}, model=${bareModel}`,
+                );
+                return {
+                  providerOverride: provider,
+                  modelOverride: bareModel,
+                };
+              }
+
               return {
                 modelOverride: modelId,
               };
@@ -724,7 +739,7 @@ const slimclawPlugin = {
           totalChars += content?.length || 0;
         }
 
-        const estimatedTokens = estimateTokens(String(totalChars));
+        const estimatedTokens = Math.ceil(totalChars / 3.5);
         api.logger.info(
           `[SlimClaw] llm_input: totalChars=${totalChars}, estimatedTokens=${estimatedTokens}`,
         );
@@ -914,7 +929,12 @@ const slimclawPlugin = {
       metrics.estimatedSavings += cacheSavings;
 
       api.logger.info(
-        `[SlimClaw] Metrics updated! requests=${metrics.totalRequests}, in=${metrics.totalInputTokens}, out=${metrics.totalOutputTokens}`,
+        `[SlimClaw] 📊 Request #${metrics.totalRequests} summary:` +
+          ` model=${model}` +
+          ` | input=${inputTokens} fresh + ${cacheReadTokens} cached + ${cacheWriteTokens} written` +
+          ` | output=${outputTokens}` +
+          ` | savings=${savingsPercent.toFixed(1)}%` +
+          ` | totals: in=${metrics.totalInputTokens} out=${metrics.totalOutputTokens} cacheReads=${metrics.totalCacheReadTokens}`,
       );
 
       // Calculate latency for metrics
@@ -1063,11 +1083,13 @@ const slimclawPlugin = {
           ? content.map((c: any) => c.text || '').join('')
           : String(content);
 
-        if (contentStr.length >= pluginConfig.cacheBreakpoints.minContentLength) {
-          // Mark this content for caching by returning modified message
-          if (api.logger.debug) {
-            api.logger.debug(`[SlimClaw] Marking ${contentStr.length} char tool result for cache`);
-          }
+        const contentChars = contentStr.length;
+        const threshold = pluginConfig.cacheBreakpoints.minContentLength;
+
+        if (contentChars >= threshold) {
+          api.logger.info(
+            `[SlimClaw] 📌 Cache breakpoint: tool_result ${contentChars} chars (threshold: ${threshold}) → MARKED for ephemeral cache`,
+          );
 
           // Return modified message with cache hint
           return {
@@ -1079,6 +1101,9 @@ const slimclawPlugin = {
           };
         }
 
+        api.logger.info(
+          `[SlimClaw] 📌 Cache breakpoint: tool_result ${contentChars} chars (threshold: ${threshold}) → SKIPPED (too small)`,
+        );
         return; // No modification
       });
 

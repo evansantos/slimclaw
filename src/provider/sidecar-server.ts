@@ -8,10 +8,17 @@ export interface SidecarRequest {
 
 export type RequestHandler = (request: SidecarRequest) => Promise<Response>;
 
+export interface Logger {
+  info: (...args: any[]) => void;
+  error: (...args: any[]) => void;
+  warn?: (...args: any[]) => void;
+}
+
 export interface SidecarConfig {
   port: number;
   timeout?: number;
   handler: RequestHandler;
+  logger?: Logger;
 }
 
 export class SidecarServer {
@@ -19,18 +26,21 @@ export class SidecarServer {
   private handler: RequestHandler;
   private port: number;
   private running = false;
+  private logger: Logger;
 
   constructor(handlerOrConfig: RequestHandler | SidecarConfig) {
     if (typeof handlerOrConfig === 'function') {
       this.handler = handlerOrConfig;
       this.port = 3334;
+      this.logger = console;
     } else {
       this.handler = handlerOrConfig.handler;
       this.port = handlerOrConfig.port;
+      this.logger = handlerOrConfig.logger || console;
     }
     this.server = createServer((req, res) => {
       this.handleRequest(req, res).catch((error) => {
-        console.error('Unhandled server error:', error);
+        this.logger.error('Unhandled server error:', error);
         if (!res.headersSent) {
           res.writeHead(500, { 'Content-Type': 'text/plain' });
           res.end('Internal server error');
@@ -127,13 +137,15 @@ export class SidecarServer {
       // Parse request body
       const body = await this.parseRequestBody(req);
 
-      // Prepare headers (only include content-type for compatibility with tests)
-      const headers: Record<string, string> = {};
-      if (req.headers['content-type']) {
-        headers['content-type'] = Array.isArray(req.headers['content-type'])
-          ? req.headers['content-type'].join(', ')
-          : req.headers['content-type'];
-      }
+      // Prepare headers with content-type defaulting to application/json
+      const rawContentType = req.headers['content-type'];
+      const headers: Record<string, string> = {
+        'content-type': rawContentType
+          ? Array.isArray(rawContentType)
+            ? rawContentType.join(', ')
+            : rawContentType
+          : 'application/json',
+      };
 
       // Call handler
       const response = await this.handler({

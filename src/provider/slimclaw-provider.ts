@@ -74,12 +74,18 @@ export interface AuthResult {
 /**
  * Configuration for SlimClaw provider
  */
+export interface SlimClawProviderLogger {
+  info: (...args: any[]) => void;
+  error: (...args: any[]) => void;
+}
+
 export interface SlimClawProviderConfig {
   port: number;
   virtualModels: VirtualModelConfig;
   providerCredentials: Map<string, ProviderCredentials>;
   slimclawConfig: SlimClawConfig;
   timeout: number;
+  logger?: SlimClawProviderLogger;
   services: {
     budgetTracker?: BudgetTracker;
     abTestManager?: ABTestManager;
@@ -129,6 +135,7 @@ export function createSlimClawProvider(config: SlimClawProviderConfig): Provider
  * Create request handler for the sidecar server
  */
 export function createSidecarRequestHandler(config: SlimClawProviderConfig): SidecarRequestHandler {
+  const logger = config.logger || console;
   const forwarder = new RequestForwarder({
     timeout: config.timeout,
     providerCredentials: config.providerCredentials,
@@ -183,7 +190,7 @@ export function createSidecarRequestHandler(config: SlimClawProviderConfig): Sid
 
       return response;
     } catch (error) {
-      console.error('[SlimClaw] Sidecar request error:', error);
+      logger.error('[SlimClaw] Sidecar request error:', error);
 
       return new Response(
         JSON.stringify({

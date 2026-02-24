@@ -176,10 +176,10 @@ describe('Hook: before_model_resolve', () => {
 
     const result = hookHandler(event, ctx);
 
-    // Verify the result — providerOverride is intentionally omitted
-    // to prevent OpenClaw from prepending provider twice (anthropic/anthropic/...)
+    // Verify the result — provider is split from model to prevent double-prefixing
     expect(result).toEqual({
-      modelOverride: 'anthropic/sonnet',
+      providerOverride: 'anthropic',
+      modelOverride: 'sonnet',
     });
 
     // Verify mocks were called correctly
@@ -378,9 +378,10 @@ describe('Hook: before_model_resolve', () => {
 
     const result = hookHandler(event, ctx);
 
-    // Verify only modelOverride is returned (no providerOverride to avoid duplication)
+    // Verify provider is split from model — for openrouter, first segment is provider
     expect(result).toEqual({
-      modelOverride: 'openrouter/anthropic/sonnet',
+      providerOverride: 'openrouter',
+      modelOverride: 'anthropic/sonnet',
     });
   });
 

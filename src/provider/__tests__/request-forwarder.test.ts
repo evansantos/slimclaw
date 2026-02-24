@@ -1,9 +1,9 @@
 // Create src/provider/__tests__/request-forwarder.test.ts
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { 
+import {
   RequestForwarder,
   type ForwardingConfig,
-  type ForwardingRequest 
+  type ForwardingRequest,
 } from '../request-forwarder.js';
 
 // Mock fetch for testing
@@ -19,11 +19,14 @@ describe('RequestForwarder', () => {
     config = {
       timeout: 30000,
       providerCredentials: new Map([
-        ['openrouter', {
-          baseUrl: 'https://openrouter.ai/api',
-          apiKey: 'test-openrouter-key'
-        }]
-      ])
+        [
+          'openrouter',
+          {
+            baseUrl: 'https://openrouter.ai/api',
+            apiKey: 'test-openrouter-key',
+          },
+        ],
+      ]),
     };
     forwarder = new RequestForwarder(config);
   });
@@ -31,17 +34,15 @@ describe('RequestForwarder', () => {
   describe('forwardRequest', () => {
     const sampleOpenAIRequest = {
       model: 'anthropic/claude-sonnet-4-20250514',
-      messages: [
-        { role: 'user', content: 'Hello world' }
-      ],
+      messages: [{ role: 'user', content: 'Hello world' }],
       temperature: 0.7,
-      stream: true
+      stream: true,
     };
 
     test('should forward request to OpenRouter with correct headers', async () => {
       const mockResponse = new Response('{"id":"test","object":"chat.completion"}', {
         status: 200,
-        headers: { 'content-type': 'application/json' }
+        headers: { 'content-type': 'application/json' },
       });
       mockFetch.mockResolvedValue(mockResponse);
 
@@ -49,7 +50,7 @@ describe('RequestForwarder', () => {
         body: sampleOpenAIRequest,
         headers: { 'X-Title': 'SlimClaw' },
         targetProvider: 'openrouter',
-        targetModel: 'anthropic/claude-sonnet-4-20250514'
+        targetModel: 'anthropic/claude-sonnet-4-20250514',
       };
 
       await forwarder.forwardRequest(request);
@@ -60,11 +61,11 @@ describe('RequestForwarder', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer test-openrouter-key',
-            'X-Title': 'SlimClaw'
+            Authorization: 'Bearer test-openrouter-key',
+            'X-Title': 'SlimClaw',
           },
-          body: JSON.stringify(sampleOpenAIRequest)
-        })
+          body: JSON.stringify(sampleOpenAIRequest),
+        }),
       );
     });
 
@@ -73,11 +74,11 @@ describe('RequestForwarder', () => {
         body: sampleOpenAIRequest,
         headers: {},
         targetProvider: 'unknown-provider',
-        targetModel: 'some-model'
+        targetModel: 'some-model',
       };
 
       await expect(forwarder.forwardRequest(request)).rejects.toThrow(
-        'Unknown provider: unknown-provider'
+        'Unknown provider: unknown-provider',
       );
     });
 
@@ -88,15 +89,15 @@ describe('RequestForwarder', () => {
           controller.enqueue(new TextEncoder().encode('data: {"delta":"hello"}\n\n'));
           controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
           controller.close();
-        }
+        },
       });
 
       const mockResponse = new Response(mockStream, {
         status: 200,
-        headers: { 
+        headers: {
           'content-type': 'text/event-stream',
-          'transfer-encoding': 'chunked'
-        }
+          'transfer-encoding': 'chunked',
+        },
       });
       mockFetch.mockResolvedValue(mockResponse);
 
@@ -104,7 +105,7 @@ describe('RequestForwarder', () => {
         body: { ...sampleOpenAIRequest, stream: true },
         headers: {},
         targetProvider: 'openrouter',
-        targetModel: 'anthropic/claude-sonnet-4-20250514'
+        targetModel: 'anthropic/claude-sonnet-4-20250514',
       };
 
       const response = await forwarder.forwardRequest(request);
@@ -116,12 +117,12 @@ describe('RequestForwarder', () => {
       const mockResponseBody = {
         id: 'test-completion',
         object: 'chat.completion',
-        choices: [{ message: { content: 'Hello back!' } }]
+        choices: [{ message: { content: 'Hello back!' } }],
       };
 
       const mockResponse = new Response(JSON.stringify(mockResponseBody), {
         status: 200,
-        headers: { 'content-type': 'application/json' }
+        headers: { 'content-type': 'application/json' },
       });
       mockFetch.mockResolvedValue(mockResponse);
 
@@ -129,7 +130,7 @@ describe('RequestForwarder', () => {
         body: { ...sampleOpenAIRequest, stream: false },
         headers: {},
         targetProvider: 'openrouter',
-        targetModel: 'anthropic/claude-sonnet-4-20250514'
+        targetModel: 'anthropic/claude-sonnet-4-20250514',
       };
 
       const response = await forwarder.forwardRequest(request);
@@ -140,51 +141,63 @@ describe('RequestForwarder', () => {
     test('should handle HTTP errors from provider', async () => {
       const mockResponse = new Response('{"error":"Invalid API key"}', {
         status: 401,
-        headers: { 'content-type': 'application/json' }
+        headers: { 'content-type': 'application/json' },
       });
       mockFetch.mockResolvedValue(mockResponse);
 
       const request: ForwardingRequest = {
         body: sampleOpenAIRequest,
         headers: {},
-        targetProvider: 'openrouter', 
-        targetModel: 'anthropic/claude-sonnet-4-20250514'
+        targetProvider: 'openrouter',
+        targetModel: 'anthropic/claude-sonnet-4-20250514',
       };
 
       const response = await forwarder.forwardRequest(request);
       expect(response.status).toBe(401);
     });
 
-    test.skip('should respect timeout configuration', async () => {
-      // Note: This test is skipped due to vitest timer complexity
-      // The timeout functionality works as verified manually
-      // Create forwarder with very short timeout
-      const shortTimeoutConfig = {
-        timeout: 100, // 100ms timeout
-        providerCredentials: new Map([
-          ['openrouter', {
-            baseUrl: 'https://openrouter.ai/api',
-            apiKey: 'test-openrouter-key'
-          }]
-        ])
-      };
-      const shortTimeoutForwarder = new RequestForwarder(shortTimeoutConfig);
-      
-      // Mock slow response that never resolves (will be aborted by timeout)
-      mockFetch.mockImplementation(() => 
-        new Promise((resolve) => {
-          // Never call resolve, so the promise hangs until aborted
-        })
-      );
+    test('should respect timeout configuration', async () => {
+      vi.useFakeTimers();
+      try {
+        const shortTimeoutConfig = {
+          timeout: 100, // 100ms timeout
+          providerCredentials: new Map([
+            [
+              'openrouter',
+              {
+                baseUrl: 'https://openrouter.ai/api',
+                apiKey: 'test-openrouter-key',
+              },
+            ],
+          ]),
+        };
+        const shortTimeoutForwarder = new RequestForwarder(shortTimeoutConfig);
 
-      const request: ForwardingRequest = {
-        body: sampleOpenAIRequest,
-        headers: {},
-        targetProvider: 'openrouter',
-        targetModel: 'anthropic/claude-sonnet-4-20250514'
-      };
+        // Mock fetch that never resolves but respects abort signal
+        mockFetch.mockImplementation(
+          (_url: string, init?: RequestInit) =>
+            new Promise((_resolve, reject) => {
+              if (init?.signal) {
+                init.signal.addEventListener('abort', () => {
+                  reject(new DOMException('The operation was aborted', 'AbortError'));
+                });
+              }
+            }),
+        );
 
-      await expect(shortTimeoutForwarder.forwardRequest(request)).rejects.toThrow(/timeout/i);
+        const request: ForwardingRequest = {
+          body: sampleOpenAIRequest,
+          headers: {},
+          targetProvider: 'openrouter',
+          targetModel: 'anthropic/claude-sonnet-4-20250514',
+        };
+
+        const promise = shortTimeoutForwarder.forwardRequest(request);
+        vi.advanceTimersByTime(101);
+        await expect(promise).rejects.toThrow(/abort|timeout/i);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
@@ -193,7 +206,7 @@ describe('RequestForwarder', () => {
       const creds = forwarder.getProviderCredentials('openrouter');
       expect(creds).toEqual({
         baseUrl: 'https://openrouter.ai/api',
-        apiKey: 'test-openrouter-key'
+        apiKey: 'test-openrouter-key',
       });
     });
 
