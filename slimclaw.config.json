@@ -13,9 +13,9 @@
     "minConfidence": 0.4,
     "pinnedModels": [],
     "tiers": {
-      "simple": "anthropic/claude-3-haiku-20240307",
-      "mid": "anthropic/claude-sonnet-4-20250514",
-      "complex": "anthropic/claude-opus-4-6",
+      "simple": "anthropic/claude-haiku-4-5",
+      "mid": "anthropic/claude-sonnet-4-5",
+      "complex": "anthropic/claude-sonnet-4-5",
       "reasoning": "anthropic/claude-opus-4-6"
     },
     "tierProviders": {
@@ -33,7 +33,7 @@
     "shadowLogging": true,
     "reasoningBudget": 10000,
     "dynamicPricing": {
-      "enabled": true,
+      "enabled": false,
       "ttlMs": 21600000,
       "refreshIntervalMs": 21600000,
       "timeoutMs": 10000,

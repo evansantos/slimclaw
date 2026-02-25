@@ -1,14 +1,14 @@
 /**
  * COMPLEXITY_SIGNALS - Keyword maps for complexity classification
- * 
+ *
  * Based on SlimClaw design doc classification tiers:
  * - simple: greetings, yes/no, short questions
- * - mid: explanations, summaries, moderate code 
+ * - mid: explanations, summaries, moderate code
  * - complex: architecture, debugging, multi-step
  * - reasoning: math proofs, strategic analysis, ethical dilemmas
  */
 
-export type ComplexityTier = "simple" | "mid" | "complex" | "reasoning";
+export type ComplexityTier = 'simple' | 'mid' | 'complex' | 'reasoning';
 
 export interface ComplexitySignal {
   keywords: string[];
@@ -19,130 +19,130 @@ export interface ComplexitySignal {
 export const COMPLEXITY_SIGNALS: Record<ComplexityTier, ComplexitySignal[]> = {
   simple: [
     {
-      keywords: ["hello", "hi", "hey", "good morning", "good afternoon", "good evening"],
-      weight: 1.0,
-      description: "Greetings"
+      keywords: ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening'],
+      weight: 3.0, // Boosted: greetings should strongly indicate simple tier
+      description: 'Greetings',
     },
     {
-      keywords: ["yes", "no", "ok", "okay", "thanks", "thank you", "please", "sure"],
-      weight: 0.8,
-      description: "Simple responses"
+      keywords: ['yes', 'no', 'ok', 'okay', 'thanks', 'thank you', 'please', 'sure'],
+      weight: 2.5, // Boosted: simple responses
+      description: 'Simple responses',
     },
     {
-      keywords: ["what", "when", "where", "who", "which", "how much", "how many"],
-      weight: 0.6,
-      description: "Simple questions"
+      keywords: ['what', 'when', 'where', 'who', 'which', 'how much', 'how many'],
+      weight: 1.2, // Boosted: simple questions
+      description: 'Simple questions',
     },
     {
-      keywords: ["quick", "brief", "short", "simple", "just"],
-      weight: 0.5,
-      description: "Brevity indicators"
-    }
+      keywords: ['quick', 'brief', 'short', 'simple', 'just'],
+      weight: 1.0, // Boosted: brevity indicators
+      description: 'Brevity indicators',
+    },
   ],
 
   mid: [
     {
-      keywords: ["explain", "describe", "tell me about", "what is", "how does"],
+      keywords: ['explain', 'describe', 'tell me about', 'what is', 'how does'],
       weight: 1.5,
-      description: "Explanation requests"
+      description: 'Explanation requests',
     },
     {
-      keywords: ["summarize", "summary", "overview", "outline", "list"],
+      keywords: ['summarize', 'summary', 'overview', 'outline', 'list'],
       weight: 0.9,
-      description: "Summarization tasks"
+      description: 'Summarization tasks',
     },
     {
-      keywords: ["function", "method", "class", "variable", "import", "export"],
+      keywords: ['function', 'method', 'class', 'variable', 'import', 'export'],
       weight: 0.8,
-      description: "Basic code concepts"
+      description: 'Basic code concepts',
     },
     {
-      keywords: ["tutorial", "guide", "example", "documentation", "help with"],
+      keywords: ['tutorial', 'guide', 'example', 'documentation', 'help with'],
       weight: 0.7,
-      description: "Learning/guidance requests"
+      description: 'Learning/guidance requests',
     },
     {
-      keywords: ["compare", "difference", "similar", "versus", "vs"],
+      keywords: ['compare', 'difference', 'similar', 'versus', 'vs'],
       weight: 0.6,
-      description: "Comparisons"
-    }
+      description: 'Comparisons',
+    },
   ],
 
   complex: [
     {
-      keywords: ["architecture", "design", "pattern", "structure", "framework"],
+      keywords: ['architecture', 'design', 'pattern', 'structure', 'framework'],
       weight: 1.2,
-      description: "Architecture/design"
+      description: 'Architecture/design',
     },
     {
-      keywords: ["debug", "debugging", "error", "issue", "problem", "fix", "troubleshoot"],
+      keywords: ['debug', 'debugging', 'error', 'issue', 'problem', 'fix', 'troubleshoot'],
       weight: 1.1,
-      description: "Debugging tasks"
+      description: 'Debugging tasks',
     },
     {
-      keywords: ["optimize", "performance", "scalability", "efficiency", "bottleneck"],
+      keywords: ['optimize', 'performance', 'scalability', 'efficiency', 'bottleneck'],
       weight: 1.0,
-      description: "Optimization"
+      description: 'Optimization',
     },
     {
-      keywords: ["implement", "build", "create", "develop", "integrate"],
+      keywords: ['implement', 'build', 'create', 'develop', 'integrate'],
       weight: 0.9,
-      description: "Implementation tasks"
+      description: 'Implementation tasks',
     },
     {
-      keywords: ["refactor", "migrate", "upgrade", "modernize", "rewrite"],
+      keywords: ['refactor', 'migrate', 'upgrade', 'modernize', 'rewrite'],
       weight: 0.8,
-      description: "Refactoring tasks"
+      description: 'Refactoring tasks',
     },
     {
-      keywords: ["multi-step", "workflow", "pipeline", "process", "sequence"],
+      keywords: ['multi-step', 'workflow', 'pipeline', 'process', 'sequence'],
       weight: 0.7,
-      description: "Multi-step processes"
+      description: 'Multi-step processes',
     },
     {
-      keywords: ["security", "authentication", "authorization", "encryption", "vulnerability"],
+      keywords: ['security', 'authentication', 'authorization', 'encryption', 'vulnerability'],
       weight: 0.9,
-      description: "Security concerns"
-    }
+      description: 'Security concerns',
+    },
   ],
 
   reasoning: [
     {
-      keywords: ["prove", "proof", "theorem", "mathematical", "equation", "formula"],
+      keywords: ['prove', 'proof', 'theorem', 'mathematical', 'equation', 'formula'],
       weight: 1.5,
-      description: "Mathematical proofs"
+      description: 'Mathematical proofs',
     },
     {
-      keywords: ["strategy", "strategic", "planning", "approach", "methodology"],
+      keywords: ['strategy', 'strategic', 'planning', 'approach', 'methodology'],
       weight: 1.3,
-      description: "Strategic analysis"
+      description: 'Strategic analysis',
     },
     {
-      keywords: ["ethical", "moral", "dilemma", "philosophy", "principle", "should we"],
+      keywords: ['ethical', 'moral', 'dilemma', 'philosophy', 'principle', 'should we'],
       weight: 1.4,
-      description: "Ethical dilemmas"
+      description: 'Ethical dilemmas',
     },
     {
-      keywords: ["analyze", "analysis", "evaluate", "assessment", "critique"],
+      keywords: ['analyze', 'analysis', 'evaluate', 'assessment', 'critique'],
       weight: 1.2,
-      description: "Deep analysis"
+      description: 'Deep analysis',
     },
     {
-      keywords: ["hypothesis", "theory", "research", "study", "investigation"],
+      keywords: ['hypothesis', 'theory', 'research', 'study', 'investigation'],
       weight: 1.1,
-      description: "Research/investigation"
+      description: 'Research/investigation',
     },
     {
-      keywords: ["paradox", "contradiction", "logic", "logical", "reasoning"],
+      keywords: ['paradox', 'contradiction', 'logic', 'logical', 'reasoning'],
       weight: 1.0,
-      description: "Logical reasoning"
+      description: 'Logical reasoning',
     },
     {
-      keywords: ["implications", "consequences", "trade-offs", "pros and cons"],
+      keywords: ['implications', 'consequences', 'trade-offs', 'pros and cons'],
       weight: 0.9,
-      description: "Consequence analysis"
-    }
-  ]
+      description: 'Consequence analysis',
+    },
+  ],
 };
 
 /**
@@ -161,38 +161,38 @@ export interface StructuralSignals {
  */
 export const STRUCTURAL_WEIGHTS = {
   codeBlock: {
-    simple: -0.3,    // code blocks reduce simple likelihood
-    mid: 0.4,        // moderate boost for mid
-    complex: 0.6,    // strong boost for complex
-    reasoning: 0.2   // slight boost for reasoning
+    simple: -0.3, // code blocks reduce simple likelihood
+    mid: 0.4, // moderate boost for mid
+    complex: 0.6, // strong boost for complex
+    reasoning: 0.2, // slight boost for reasoning
   },
   toolCalls: {
-    simple: -0.8,    // tool use indicates complexity
+    simple: -0.8, // tool use indicates complexity
     mid: 0.6,
     complex: 1.0,
-    reasoning: 0.5
+    reasoning: 0.5,
   },
   messageLength: {
     // Scoring based on character count thresholds
     thresholds: {
-      veryShort: 50,   // likely simple
-      short: 200,      // could be simple/mid
-      medium: 1000,    // likely mid/complex
-      long: 3000       // likely complex/reasoning
+      veryShort: 50, // likely simple
+      short: 200, // could be simple/mid
+      medium: 1000, // likely mid/complex
+      long: 3000, // likely complex/reasoning
     },
     weights: {
       veryShort: { simple: 0.8, mid: -0.2, complex: -0.5, reasoning: -0.7 },
       short: { simple: 0.4, mid: 0.2, complex: -0.2, reasoning: -0.4 },
       medium: { simple: -0.2, mid: 0.3, complex: 0.4, reasoning: 0.1 },
       long: { simple: -0.5, mid: -0.1, complex: 0.5, reasoning: 0.8 },
-      veryLong: { simple: -0.8, mid: -0.3, complex: 0.3, reasoning: 0.9 }
-    }
+      veryLong: { simple: -0.8, mid: -0.3, complex: 0.3, reasoning: 0.9 },
+    },
   },
   questionCount: {
     // Multiple questions often indicate complexity
     single: { simple: 0.3, mid: 0.1, complex: -0.1, reasoning: -0.2 },
-    multiple: { simple: -0.2, mid: 0.2, complex: 0.4, reasoning: 0.3 }
-  }
+    multiple: { simple: -0.2, mid: 0.2, complex: 0.4, reasoning: 0.3 },
+  },
 };
 
 /**
@@ -221,20 +221,21 @@ export function extractKeywords(text: string): string[] {
  */
 export function analyzeStructuralSignals(messages: any[]): StructuralSignals {
   const lastMessage = messages[messages.length - 1];
-  const content = typeof lastMessage?.content === 'string' 
-    ? lastMessage.content 
-    : Array.isArray(lastMessage?.content)
-      ? lastMessage.content.map((c: any) => c.text || c.content || '').join(' ')
-      : '';
+  const content =
+    typeof lastMessage?.content === 'string'
+      ? lastMessage.content
+      : Array.isArray(lastMessage?.content)
+        ? lastMessage.content.map((c: any) => c.text || c.content || '').join(' ')
+        : '';
 
   // Detect code blocks (markdown style)
   const hasCodeBlocks = /```[\s\S]*?```|`[^`\n]+`/.test(content);
-  
+
   // Detect tool calls/use
   const hasToolCalls = Boolean(
-    lastMessage?.tool_calls?.length || 
+    lastMessage?.tool_calls?.length ||
     lastMessage?.tool_use?.length ||
-    messages.some(m => m.role === 'tool')
+    messages.some((m) => m.role === 'tool'),
   );
 
   // Count questions
@@ -248,6 +249,6 @@ export function analyzeStructuralSignals(messages: any[]): StructuralSignals {
     hasToolCalls,
     messageLength: content.length,
     questionCount,
-    complexityIndicators
+    complexityIndicators,
   };
 }
