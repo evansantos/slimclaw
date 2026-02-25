@@ -14,7 +14,7 @@ export class MetricsReporter {
 
   constructor(
     private config: MetricsConfig,
-    dataDir?: string
+    dataDir?: string,
   ) {
     // Default to ~/.openclaw/data/slimclaw/
     this.baseDir = dataDir || join(homedir(), '.openclaw', 'data', 'slimclaw');
@@ -56,9 +56,7 @@ export class MetricsReporter {
 
     for (const [dateStr, dayMetrics] of Object.entries(grouped)) {
       const filePath = join(metricsDir, `${dateStr}.jsonl`);
-      const content = dayMetrics
-        .map(m => JSON.stringify(m, null, 0))
-        .join('\n') + '\n';
+      const content = dayMetrics.map((m) => JSON.stringify(m, null, 0)).join('\n') + '\n';
 
       try {
         // Use append for efficiency (most common case)
@@ -75,7 +73,7 @@ export class MetricsReporter {
    */
   async readMetricsForDate(date: string): Promise<OptimizerMetrics[]> {
     const filePath = join(this.baseDir, this.config.logDir, `${date}.jsonl`);
-    
+
     if (!existsSync(filePath)) {
       return [];
     }
@@ -98,7 +96,7 @@ export class MetricsReporter {
    */
   async getAvailableDates(): Promise<string[]> {
     const metricsDir = join(this.baseDir, this.config.logDir);
-    
+
     if (!existsSync(metricsDir)) {
       return [];
     }
@@ -121,7 +119,7 @@ export class MetricsReporter {
    */
   async generateReport(
     startDate: string,
-    endDate: string
+    endDate: string,
   ): Promise<{
     totalRequests: number;
     totalTokensSaved: number;
@@ -130,8 +128,8 @@ export class MetricsReporter {
     topOptimizations: string[];
   }> {
     const dates = await this.getAvailableDates();
-    const relevantDates = dates.filter(date => date >= startDate && date <= endDate);
-    
+    const relevantDates = dates.filter((date) => date >= startDate && date <= endDate);
+
     let allMetrics: OptimizerMetrics[] = [];
     for (const date of relevantDates) {
       const dayMetrics = await this.readMetricsForDate(date);
@@ -151,20 +149,24 @@ export class MetricsReporter {
     const totalRequests = allMetrics.length;
     const totalTokensSaved = allMetrics.reduce((sum, m) => sum + (m.tokensSaved ?? 0), 0);
     const totalCostSaved = allMetrics.reduce((sum, m) => sum + (m.estimatedCostSaved ?? 0), 0);
-    
+
     const savingsPercents = allMetrics
-      .filter(m => m.originalTokenEstimate > 0)
-      .map(m => ((m.originalTokenEstimate - m.windowedTokenEstimate) / m.originalTokenEstimate) * 100);
-    const averageSavingsPercent = savingsPercents.length > 0
-      ? savingsPercents.reduce((a, b) => a + b, 0) / savingsPercents.length
-      : 0;
+      .filter((m) => m.originalTokenEstimate > 0)
+      .map(
+        (m) =>
+          ((m.originalTokenEstimate - m.windowedTokenEstimate) / m.originalTokenEstimate) * 100,
+      );
+    const averageSavingsPercent =
+      savingsPercents.length > 0
+        ? savingsPercents.reduce((a, b) => a + b, 0) / savingsPercents.length
+        : 0;
 
     // Find top optimizations
     const topOptimizations = allMetrics
-      .filter(m => (m.tokensSaved ?? 0) > 1000)
+      .filter((m) => (m.tokensSaved ?? 0) > 1000)
       .sort((a, b) => (b.tokensSaved ?? 0) - (a.tokensSaved ?? 0))
       .slice(0, 5)
-      .map(m => `${m.agentId}: ${m.tokensSaved} tokens (${m.classificationTier})`);
+      .map((m) => `${m.agentId}: ${m.tokensSaved} tokens (${m.classificationTier})`);
 
     return {
       totalRequests,
@@ -192,7 +194,7 @@ export class MetricsReporter {
    */
   private groupMetricsByDate(metrics: OptimizerMetrics[]): Record<string, OptimizerMetrics[]> {
     const grouped: Record<string, OptimizerMetrics[]> = {};
-    
+
     for (const metric of metrics) {
       const dateStr = metric.timestamp.split('T')[0]; // Extract YYYY-MM-DD
       if (!grouped[dateStr]) {
@@ -200,7 +202,7 @@ export class MetricsReporter {
       }
       grouped[dateStr].push(metric);
     }
-    
+
     return grouped;
   }
 
@@ -250,30 +252,39 @@ export class MetricsReporter {
         },
         modelUpgradePercent: 0,
         combinedSavingsPercent: 0,
+        totalCachedTokens: 0,
+        totalFreshTokens: 0,
+        averageCacheSavingsPercent: 0,
       };
     }
 
     const totalRequests = metrics.length;
 
     // Basic token stats
-    const averageOriginalTokens = 
+    const averageOriginalTokens =
       metrics.reduce((sum, m) => sum + m.originalTokenEstimate, 0) / totalRequests;
-    const averageOptimizedTokens = 
+    const averageOptimizedTokens =
       metrics.reduce((sum, m) => sum + m.windowedTokenEstimate, 0) / totalRequests;
-    const averageTokensSaved = 
+    const averageTokensSaved =
       metrics.reduce((sum, m) => sum + (m.tokensSaved ?? 0), 0) / totalRequests;
 
     // Savings percent
     const savingsPercents = metrics
-      .filter(m => m.originalTokenEstimate > 0)
-      .map(m => ((m.originalTokenEstimate - m.windowedTokenEstimate) / m.originalTokenEstimate) * 100);
-    const averageSavingsPercent = savingsPercents.length > 0
-      ? savingsPercents.reduce((a, b) => a + b, 0) / savingsPercents.length
-      : 0;
+      .filter((m) => m.originalTokenEstimate > 0)
+      .map(
+        (m) =>
+          ((m.originalTokenEstimate - m.windowedTokenEstimate) / m.originalTokenEstimate) * 100,
+      );
+    const averageSavingsPercent =
+      savingsPercents.length > 0
+        ? savingsPercents.reduce((a, b) => a + b, 0) / savingsPercents.length
+        : 0;
 
     // Windowing and cache usage
-    const windowingUsagePercent = (metrics.filter(m => m.windowingApplied).length / totalRequests) * 100;
-    const cacheUsagePercent = (metrics.filter(m => (m.cacheReadTokens ?? 0) > 0).length / totalRequests) * 100;
+    const windowingUsagePercent =
+      (metrics.filter((m) => m.windowingApplied).length / totalRequests) * 100;
+    const cacheUsagePercent =
+      (metrics.filter((m) => (m.cacheReadTokens ?? 0) > 0).length / totalRequests) * 100;
 
     // Classification distribution
     const classificationDistribution: Record<ComplexityTier, number> = {
@@ -282,19 +293,20 @@ export class MetricsReporter {
       complex: 0,
       reasoning: 0,
     };
-    metrics.forEach(m => {
+    metrics.forEach((m) => {
       classificationDistribution[m.classificationTier]++;
     });
 
     // Routing stats
-    const routingUsagePercent = (metrics.filter(m => m.routingApplied).length / totalRequests) * 100;
-    const modelDowngradePercent = (metrics.filter(m => m.modelDowngraded).length / totalRequests) * 100;
+    const routingUsagePercent =
+      (metrics.filter((m) => m.routingApplied).length / totalRequests) * 100;
+    const modelDowngradePercent =
+      (metrics.filter((m) => m.modelDowngraded).length / totalRequests) * 100;
 
     // Average latency
-    const latencies = metrics.filter(m => m.latencyMs !== null).map(m => m.latencyMs!);
-    const averageLatencyMs = latencies.length > 0
-      ? latencies.reduce((a, b) => a + b, 0) / latencies.length
-      : 0;
+    const latencies = metrics.filter((m) => m.latencyMs !== null).map((m) => m.latencyMs!);
+    const averageLatencyMs =
+      latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0;
 
     // Total cost saved
     const totalCostSaved = metrics.reduce((sum, m) => sum + (m.estimatedCostSaved ?? 0), 0);
@@ -302,10 +314,14 @@ export class MetricsReporter {
     // NEW ROUTING STATS
 
     // Average routing savings (only for metrics with routing applied)
-    const routingMetrics = metrics.filter(m => m.routingApplied && m.routingSavingsPercent !== undefined);
-    const averageRoutingSavings = routingMetrics.length > 0
-      ? routingMetrics.reduce((sum, m) => sum + m.routingSavingsPercent!, 0) / routingMetrics.length
-      : 0;
+    const routingMetrics = metrics.filter(
+      (m) => m.routingApplied && m.routingSavingsPercent !== undefined,
+    );
+    const averageRoutingSavings =
+      routingMetrics.length > 0
+        ? routingMetrics.reduce((sum, m) => sum + m.routingSavingsPercent!, 0) /
+          routingMetrics.length
+        : 0;
 
     // Routing tier distribution (only for metrics with routing applied)
     const routingTierDistribution: Record<ComplexityTier, number> = {
@@ -314,18 +330,33 @@ export class MetricsReporter {
       complex: 0,
       reasoning: 0,
     };
-    metrics.filter(m => m.routingApplied && m.routingTier !== undefined).forEach(m => {
-      routingTierDistribution[m.routingTier!]++;
-    });
+    metrics
+      .filter((m) => m.routingApplied && m.routingTier !== undefined)
+      .forEach((m) => {
+        routingTierDistribution[m.routingTier!]++;
+      });
 
     // Model upgrade percent
-    const modelUpgradePercent = (metrics.filter(m => m.modelUpgraded).length / totalRequests) * 100;
+    const modelUpgradePercent =
+      (metrics.filter((m) => m.modelUpgraded).length / totalRequests) * 100;
 
     // Combined savings percent (if available)
-    const combinedSavingsMetrics = metrics.filter(m => m.combinedSavingsPercent !== undefined);
-    const combinedSavingsPercent = combinedSavingsMetrics.length > 0
-      ? combinedSavingsMetrics.reduce((sum, m) => sum + m.combinedSavingsPercent!, 0) / combinedSavingsMetrics.length
-      : 0;
+    const combinedSavingsMetrics = metrics.filter((m) => m.combinedSavingsPercent !== undefined);
+    const combinedSavingsPercent =
+      combinedSavingsMetrics.length > 0
+        ? combinedSavingsMetrics.reduce((sum, m) => sum + m.combinedSavingsPercent!, 0) /
+          combinedSavingsMetrics.length
+        : 0;
+
+    // Cache savings metrics
+    const totalCachedTokens = metrics.reduce((sum, m) => sum + (m.cacheReadTokens ?? 0), 0);
+    const totalFreshTokens = metrics.reduce(
+      (sum, m) => sum + ((m.actualInputTokens ?? 0) - (m.cacheReadTokens ?? 0)),
+      0,
+    );
+    const totalInputTokens = totalCachedTokens + totalFreshTokens;
+    const averageCacheSavingsPercent =
+      totalInputTokens > 0 ? (totalCachedTokens / totalInputTokens) * 100 : 0;
 
     return {
       totalRequests,
@@ -344,6 +375,9 @@ export class MetricsReporter {
       routingTierDistribution,
       modelUpgradePercent,
       combinedSavingsPercent,
+      totalCachedTokens,
+      totalFreshTokens,
+      averageCacheSavingsPercent,
     };
   }
 }

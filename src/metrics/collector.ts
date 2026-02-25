@@ -15,7 +15,7 @@ export class MetricsCollector {
 
   constructor(
     private config: MetricsConfig,
-    private reporter?: import('./reporter.js').MetricsReporter
+    private reporter?: import('./reporter.js').MetricsReporter,
   ) {
     this.logger.debug('MetricsCollector initialized', {
       enabled: config.enabled,
@@ -67,9 +67,9 @@ export class MetricsCollector {
     }
 
     const toFlush = this.buffer.splice(0);
-    
+
     this.logger.debug('Flushing metrics to reporter', { count: toFlush.length });
-    
+
     if (this.reporter) {
       try {
         await this.reporter.writeMetrics(toFlush);
@@ -129,6 +129,9 @@ export class MetricsCollector {
       routingTierDistribution: { simple: 0, mid: 0, complex: 0, reasoning: 0 },
       modelUpgradePercent: 0,
       combinedSavingsPercent: 0,
+      totalCachedTokens: 0,
+      totalFreshTokens: 0,
+      averageCacheSavingsPercent: 0,
     };
   }
 
@@ -169,16 +172,17 @@ export class MetricsCollector {
     const status = this.getStatus();
 
     if (stats.totalRequests === 0) {
-      return "🔬 SlimClaw Metrics — No data yet";
+      return '🔬 SlimClaw Metrics — No data yet';
     }
 
-    const reduction = stats.averageOriginalTokens > 0
-      ? ((1 - stats.averageOptimizedTokens / stats.averageOriginalTokens) * 100).toFixed(1)
-      : "0";
+    const reduction =
+      stats.averageOriginalTokens > 0
+        ? ((1 - stats.averageOptimizedTokens / stats.averageOriginalTokens) * 100).toFixed(1)
+        : '0';
 
     const tiersList = Object.entries(stats.classificationDistribution)
       .map(([tier, count]) => `${tier}=${count}`)
-      .join(", ");
+      .join(', ');
 
     return [
       `🔬 SlimClaw Metrics`,
@@ -194,7 +198,6 @@ export class MetricsCollector {
       ``,
       `Avg latency: ${stats.averageLatencyMs}ms`,
       `Total cost saved: $${stats.totalCostSaved}`,
-    ].join("\n");
+    ].join('\n');
   }
-
 }

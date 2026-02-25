@@ -177,6 +177,9 @@ class SlimClawMetricsAdapter implements Pick<
         routingTierDistribution: { simple: 0, mid: 0, complex: 0, reasoning: 0 },
         modelUpgradePercent: 0,
         combinedSavingsPercent: 0,
+        totalCachedTokens: 0,
+        totalFreshTokens: 0,
+        averageCacheSavingsPercent: 0,
       };
     }
 
@@ -229,6 +232,22 @@ class SlimClawMetricsAdapter implements Pick<
       })(),
       modelUpgradePercent: 0,
       combinedSavingsPercent: 0,
+      totalCachedTokens: metrics.requestHistory.reduce(
+        (sum, r) => sum + (r.cacheReadTokens || 0),
+        0,
+      ),
+      totalFreshTokens: metrics.requestHistory.reduce(
+        (sum, r) => sum + (r.inputTokens - (r.cacheReadTokens || 0)),
+        0,
+      ),
+      averageCacheSavingsPercent: (() => {
+        const totalCached = metrics.requestHistory.reduce(
+          (sum, r) => sum + (r.cacheReadTokens || 0),
+          0,
+        );
+        const totalInput = metrics.requestHistory.reduce((sum, r) => sum + r.inputTokens, 0);
+        return totalInput > 0 ? (totalCached / totalInput) * 100 : 0;
+      })(),
     };
   }
 
