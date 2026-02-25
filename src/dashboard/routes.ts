@@ -48,11 +48,12 @@ export function setupRoutes(collector: MetricsCollector): Hono {
     try {
       const htmlPath = join(__dirname, 'views', 'index.html');
       const html = await readFile(htmlPath, 'utf-8');
-      
+
       return c.html(html);
     } catch (error) {
       logger.error('Failed to serve dashboard HTML', error instanceof Error ? error : { error });
-      return c.html(`
+      return c.html(
+        `
         <html>
           <head><title>SlimClaw Dashboard</title></head>
           <body>
@@ -61,7 +62,9 @@ export function setupRoutes(collector: MetricsCollector): Hono {
             <p>Make sure <code>src/dashboard/views/index.html</code> exists.</p>
           </body>
         </html>
-      `, 500);
+      `,
+        500,
+      );
     }
   });
 
@@ -81,46 +84,49 @@ export function setupRoutes(collector: MetricsCollector): Hono {
       return c.json({
         timestamp: new Date().toISOString(),
         totalRequests: stats.totalRequests,
-        
+
         // Token savings
         tokensSaved: {
           total: Math.round(stats.averageTokensSaved * stats.totalRequests),
           average: Math.round(stats.averageTokensSaved),
-          percentage: Math.round(stats.averageSavingsPercent * 100) / 100
+          percentage: Math.round(stats.averageSavingsPercent * 100) / 100,
         },
-        
+
         // Cache metrics
         cacheHitRate,
-        
+
         // Feature breakdown
         breakdown: {
           windowing: windowingVsCache.windowing.percentage,
           cache: windowingVsCache.cache.percentage,
           routing: Math.round(stats.routingUsagePercent * 100) / 100,
-          modelDowngrade: Math.round(stats.modelDowngradePercent * 100) / 100
+          modelDowngrade: Math.round(stats.modelDowngradePercent * 100) / 100,
         },
-        
+
         // Performance
         averageLatencyMs: Math.round(stats.averageLatencyMs),
         totalCostSaved: Math.round(stats.totalCostSaved * 10000) / 10000,
-        
+
         // Classification distribution
         complexityDistribution: stats.classificationDistribution,
-        
+
         // System status
         systemStatus: {
           enabled: status.enabled,
           bufferSize: status.bufferSize,
           pendingFlush: status.pendingFlush,
-          totalProcessed: status.totalProcessed
-        }
+          totalProcessed: status.totalProcessed,
+        },
       });
     } catch (error) {
       logger.error('Failed to fetch optimizer metrics', error instanceof Error ? error : { error });
-      return c.json({ 
-        error: 'Internal server error',
-        timestamp: new Date().toISOString()
-      }, 500);
+      return c.json(
+        {
+          error: 'Internal server error',
+          timestamp: new Date().toISOString(),
+        },
+        500,
+      );
     }
   });
 
@@ -134,18 +140,21 @@ export function setupRoutes(collector: MetricsCollector): Hono {
         period: c.req.query('period'),
         limit: c.req.query('limit'),
       };
-      
+
       const validatedQuery = historyQuerySchema.safeParse(rawQuery);
       if (!validatedQuery.success) {
-        return c.json({ 
-          error: 'Invalid period. Use: hour, day, or week',
-          details: validatedQuery.error.issues
-        }, 400);
+        return c.json(
+          {
+            error: 'Invalid period. Use: hour, day, or week',
+            details: validatedQuery.error.issues,
+          },
+          400,
+        );
       }
 
       const { period, limit } = validatedQuery.data;
       const data = collector.getRecent(limit);
-      
+
       let groupedData: GroupedMetrics[];
       let timeFormat: string;
 
@@ -169,7 +178,7 @@ export function setupRoutes(collector: MetricsCollector): Hono {
       return c.json({
         period,
         timeFormat,
-        data: groupedData.map(group => ({
+        data: groupedData.map((group) => ({
           timestamp: group.timestamp,
           label: formatTimeLabel(group.timestamp, period),
           metrics: {
@@ -178,16 +187,19 @@ export function setupRoutes(collector: MetricsCollector): Hono {
             averageLatency: group.averageLatency,
             cacheHitRate: group.cacheHitRate,
             savingsPercentage: group.savingsPercentage,
-            complexityDistribution: group.complexityDistribution
-          }
-        }))
+            complexityDistribution: group.complexityDistribution,
+          },
+        })),
       });
     } catch (error) {
       logger.error('Failed to fetch metrics history', error instanceof Error ? error : { error });
-      return c.json({ 
-        error: 'Internal server error',
-        timestamp: new Date().toISOString()
-      }, 500);
+      return c.json(
+        {
+          error: 'Internal server error',
+          timestamp: new Date().toISOString(),
+        },
+        500,
+      );
     }
   });
 
@@ -200,13 +212,16 @@ export function setupRoutes(collector: MetricsCollector): Hono {
       const rawQuery = {
         limit: c.req.query('limit'),
       };
-      
+
       const validatedQuery = rawQuerySchema.safeParse(rawQuery);
       if (!validatedQuery.success) {
-        return c.json({ 
-          error: 'Invalid query parameters',
-          details: validatedQuery.error.issues
-        }, 400);
+        return c.json(
+          {
+            error: 'Invalid query parameters',
+            details: validatedQuery.error.issues,
+          },
+          400,
+        );
       }
 
       const { limit } = validatedQuery.data;
@@ -214,7 +229,7 @@ export function setupRoutes(collector: MetricsCollector): Hono {
 
       return c.json({
         count: recent.length,
-        data: recent.map(metric => ({
+        data: recent.map((metric) => ({
           requestId: metric.requestId,
           timestamp: metric.timestamp,
           agentId: metric.agentId,
@@ -224,15 +239,18 @@ export function setupRoutes(collector: MetricsCollector): Hono {
           classificationTier: metric.classificationTier,
           windowingApplied: metric.windowingApplied,
           cacheBreakpointsInjected: metric.cacheBreakpointsInjected,
-          latencyMs: metric.latencyMs
-        }))
+          latencyMs: metric.latencyMs,
+        })),
       });
     } catch (error) {
       logger.error('Failed to fetch raw metrics', error instanceof Error ? error : { error });
-      return c.json({ 
-        error: 'Internal server error',
-        timestamp: new Date().toISOString()
-      }, 500);
+      return c.json(
+        {
+          error: 'Internal server error',
+          timestamp: new Date().toISOString(),
+        },
+        500,
+      );
     }
   });
 
@@ -245,45 +263,72 @@ export function setupRoutes(collector: MetricsCollector): Hono {
       const recent = collector.getRecent(100); // Get more data for routing analysis
 
       // Calculate routing-specific metrics
-      const routingMetrics = recent.filter(m => m.routingApplied);
+      const routingMetrics = recent.filter((m) => m.routingApplied);
       const hasRoutingData = routingMetrics.length > 0;
 
       // Tier distribution percentages (use routingMetrics.length as denominator)
       const totalRoutingRequests = routingMetrics.length;
-      const tierDistribution = totalRoutingRequests > 0 ? {
-        simple: Math.round((routingMetrics.filter(m => m.routingTier === 'simple').length / totalRoutingRequests) * 100),
-        mid: Math.round((routingMetrics.filter(m => m.routingTier === 'mid').length / totalRoutingRequests) * 100),
-        complex: Math.round((routingMetrics.filter(m => m.routingTier === 'complex').length / totalRoutingRequests) * 100),
-        reasoning: Math.round((routingMetrics.filter(m => m.routingTier === 'reasoning').length / totalRoutingRequests) * 100),
-      } : { simple: 0, mid: 0, complex: 0, reasoning: 0 };
+      const tierDistribution =
+        totalRoutingRequests > 0
+          ? {
+              simple: Math.round(
+                (routingMetrics.filter((m) => m.routingTier === 'simple').length /
+                  totalRoutingRequests) *
+                  100,
+              ),
+              mid: Math.round(
+                (routingMetrics.filter((m) => m.routingTier === 'mid').length /
+                  totalRoutingRequests) *
+                  100,
+              ),
+              complex: Math.round(
+                (routingMetrics.filter((m) => m.routingTier === 'complex').length /
+                  totalRoutingRequests) *
+                  100,
+              ),
+              reasoning: Math.round(
+                (routingMetrics.filter((m) => m.routingTier === 'reasoning').length /
+                  totalRoutingRequests) *
+                  100,
+              ),
+            }
+          : { simple: 0, mid: 0, complex: 0, reasoning: 0 };
 
       return c.json({
         timestamp: new Date().toISOString(),
         hasData: hasRoutingData,
-        
+
         // Core routing metrics
         routingUsage: Math.round(stats.routingUsagePercent * 100) / 100,
         averageRoutingSavings: Math.round(stats.averageRoutingSavings * 100) / 100,
         tierDistribution,
-        
-        // Model routing behavior  
+
+        // Model routing behavior
         modelDowngrade: Math.round(stats.modelDowngradePercent * 100) / 100,
         modelUpgrade: Math.round(stats.modelUpgradePercent * 100) / 100,
-        
+
         // Combined optimization results
         combinedSavings: Math.round(stats.combinedSavingsPercent * 100) / 100,
-        
+
+        // Cache savings metrics
+        cacheSavings: Math.round(stats.averageCacheSavingsPercent * 100) / 100,
+        totalCachedTokens: stats.totalCachedTokens,
+        totalFreshTokens: stats.totalFreshTokens,
+
         // Additional context
         totalRequests: stats.totalRequests,
-        routingRequests: totalRoutingRequests
+        routingRequests: totalRoutingRequests,
       });
     } catch (error) {
       logger.error('Failed to fetch routing stats', error as Error | Record<string, unknown>);
-      return c.json({ 
-        error: 'Internal server error',
-        timestamp: new Date().toISOString(),
-        hasData: false
-      }, 500);
+      return c.json(
+        {
+          error: 'Internal server error',
+          timestamp: new Date().toISOString(),
+          hasData: false,
+        },
+        500,
+      );
     }
   });
 
@@ -293,23 +338,26 @@ export function setupRoutes(collector: MetricsCollector): Hono {
   app.get('/health', (c) => {
     try {
       const status = collector.getStatus();
-      
+
       return c.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
         metrics: {
           enabled: status.enabled,
           totalProcessed: status.totalProcessed,
-          bufferSize: status.bufferSize
-        }
+          bufferSize: status.bufferSize,
+        },
       });
     } catch (error) {
       logger.error('Health check failed', error instanceof Error ? error : { error });
-      return c.json({ 
-        status: 'unhealthy',
-        timestamp: new Date().toISOString(),
-        error: 'Service health check failed'
-      }, 503);
+      return c.json(
+        {
+          status: 'unhealthy',
+          timestamp: new Date().toISOString(),
+          error: 'Service health check failed',
+        },
+        503,
+      );
     }
   });
 
@@ -320,8 +368,8 @@ export function setupRoutes(collector: MetricsCollector): Hono {
 
 function calculateCacheHitRate(metrics: OptimizerMetrics[]): number {
   if (metrics.length === 0) return 0;
-  
-  const withCache = metrics.filter(m => m.cacheBreakpointsInjected > 0).length;
+
+  const withCache = metrics.filter((m) => m.cacheBreakpointsInjected > 0).length;
   return Math.round((withCache / metrics.length) * 100);
 }
 
@@ -332,12 +380,12 @@ function calculateWindowingVsCacheBreakdown(metrics: OptimizerMetrics[]): {
   if (metrics.length === 0) {
     return {
       windowing: { percentage: 0, savings: 0 },
-      cache: { percentage: 0, savings: 0 }
+      cache: { percentage: 0, savings: 0 },
     };
   }
 
-  const windowingMetrics = metrics.filter(m => m.windowingApplied);
-  const cacheMetrics = metrics.filter(m => m.cacheBreakpointsInjected > 0);
+  const windowingMetrics = metrics.filter((m) => m.windowingApplied);
+  const cacheMetrics = metrics.filter((m) => m.cacheBreakpointsInjected > 0);
 
   const windowingSavings = windowingMetrics.reduce((sum, m) => sum + (m.tokensSaved || 0), 0);
   const cacheSavings = cacheMetrics.reduce((sum, m) => sum + (m.tokensSaved || 0), 0);
@@ -345,12 +393,12 @@ function calculateWindowingVsCacheBreakdown(metrics: OptimizerMetrics[]): {
   return {
     windowing: {
       percentage: Math.round((windowingMetrics.length / metrics.length) * 100),
-      savings: Math.round(windowingSavings)
+      savings: Math.round(windowingSavings),
     },
     cache: {
       percentage: Math.round((cacheMetrics.length / metrics.length) * 100),
-      savings: Math.round(cacheSavings)
-    }
+      savings: Math.round(cacheSavings),
+    },
   };
 }
 
@@ -369,10 +417,12 @@ function groupByHour(data: OptimizerMetrics[]): GroupedMetrics[] {
     timestamp,
     requests: metrics.length,
     tokensSaved: metrics.reduce((sum, m) => sum + (m.tokensSaved || 0), 0),
-    averageLatency: Math.round(metrics.reduce((sum, m) => sum + (m.latencyMs || 0), 0) / metrics.length),
+    averageLatency: Math.round(
+      metrics.reduce((sum, m) => sum + (m.latencyMs || 0), 0) / metrics.length,
+    ),
     cacheHitRate: calculateCacheHitRate(metrics),
     savingsPercentage: calculateAverageSavings(metrics),
-    complexityDistribution: calculateComplexityDistribution(metrics)
+    complexityDistribution: calculateComplexityDistribution(metrics),
   }));
 }
 
@@ -391,10 +441,12 @@ function groupByDay(data: OptimizerMetrics[]): GroupedMetrics[] {
     timestamp,
     requests: metrics.length,
     tokensSaved: metrics.reduce((sum, m) => sum + (m.tokensSaved || 0), 0),
-    averageLatency: Math.round(metrics.reduce((sum, m) => sum + (m.latencyMs || 0), 0) / metrics.length),
+    averageLatency: Math.round(
+      metrics.reduce((sum, m) => sum + (m.latencyMs || 0), 0) / metrics.length,
+    ),
     cacheHitRate: calculateCacheHitRate(metrics),
     savingsPercentage: calculateAverageSavings(metrics),
-    complexityDistribution: calculateComplexityDistribution(metrics)
+    complexityDistribution: calculateComplexityDistribution(metrics),
   }));
 }
 
@@ -406,7 +458,7 @@ function groupByWeek(data: OptimizerMetrics[]): GroupedMetrics[] {
     const date = new Date(metric.timestamp);
     const weekStart = new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
     const weekKey = weekStart.toISOString().substring(0, 10);
-    
+
     if (!groups.has(weekKey)) {
       groups.set(weekKey, []);
     }
@@ -417,33 +469,38 @@ function groupByWeek(data: OptimizerMetrics[]): GroupedMetrics[] {
     timestamp,
     requests: metrics.length,
     tokensSaved: metrics.reduce((sum, m) => sum + (m.tokensSaved || 0), 0),
-    averageLatency: Math.round(metrics.reduce((sum, m) => sum + (m.latencyMs || 0), 0) / (metrics.length || 1)),
+    averageLatency: Math.round(
+      metrics.reduce((sum, m) => sum + (m.latencyMs || 0), 0) / (metrics.length || 1),
+    ),
     cacheHitRate: calculateCacheHitRate(metrics),
     savingsPercentage: calculateAverageSavings(metrics),
-    complexityDistribution: calculateComplexityDistribution(metrics)
+    complexityDistribution: calculateComplexityDistribution(metrics),
   }));
 }
 
 function calculateAverageSavings(metrics: OptimizerMetrics[]): number {
   if (metrics.length === 0) return 0;
-  
-  const validMetrics = metrics.filter(m => m.originalTokenEstimate > 0);
+
+  const validMetrics = metrics.filter((m) => m.originalTokenEstimate > 0);
   if (validMetrics.length === 0) return 0;
 
   const totalSavings = validMetrics.reduce((sum, m) => {
-    const savings = ((m.originalTokenEstimate - m.windowedTokenEstimate) / m.originalTokenEstimate) * 100;
+    const savings =
+      ((m.originalTokenEstimate - m.windowedTokenEstimate) / m.originalTokenEstimate) * 100;
     return sum + savings;
   }, 0);
 
   return Math.round(totalSavings / validMetrics.length);
 }
 
-function calculateComplexityDistribution(metrics: OptimizerMetrics[]): Record<ComplexityTier, number> {
+function calculateComplexityDistribution(
+  metrics: OptimizerMetrics[],
+): Record<ComplexityTier, number> {
   const distribution: Record<ComplexityTier, number> = {
     simple: 0,
     mid: 0,
     complex: 0,
-    reasoning: 0
+    reasoning: 0,
   };
 
   for (const metric of metrics) {
@@ -455,7 +512,7 @@ function calculateComplexityDistribution(metrics: OptimizerMetrics[]): Record<Co
 
 function formatTimeLabel(timestamp: string, period: string): string {
   const date = new Date(timestamp);
-  
+
   switch (period) {
     case 'hour':
       return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });

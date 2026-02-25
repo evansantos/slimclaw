@@ -3,7 +3,7 @@
  * Based on design document specifications
  */
 
-export type ComplexityTier = "simple" | "mid" | "complex" | "reasoning";
+export type ComplexityTier = 'simple' | 'mid' | 'complex' | 'reasoning';
 
 export interface OptimizerMetrics {
   /** Unique request identifier (from runId) */
@@ -16,7 +16,7 @@ export interface OptimizerMetrics {
   sessionKey: string;
 
   // — Mode —
-  mode: "shadow" | "active";
+  mode: 'shadow' | 'active';
 
   // — Input state (before optimization) —
   originalModel: string | null;
@@ -29,7 +29,7 @@ export interface OptimizerMetrics {
   windowedTokenEstimate: number;
   trimmedMessages: number;
   summaryTokens: number;
-  summarizationMethod: "none" | "heuristic" | "llm";
+  summarizationMethod: 'none' | 'heuristic' | 'llm';
 
   // — Classification —
   classificationTier: ComplexityTier;
@@ -85,6 +85,10 @@ export interface MetricsStats {
   routingTierDistribution: Record<ComplexityTier, number>;
   modelUpgradePercent: number;
   combinedSavingsPercent: number;
+  // Cache savings metrics
+  totalCachedTokens: number;
+  totalFreshTokens: number;
+  averageCacheSavingsPercent: number;
 }
 
 /**

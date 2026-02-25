@@ -1,24 +1,22 @@
 /**
  * SlimClaw Model Routing - Main Router Logic
- * 
+ *
  * Implements the resolveModel() function that determines which model to use
  * based on complexity classification, configuration, and overrides
  */
 
 import type { ClassificationResult } from '../classifier/index.js';
 import type { SlimClawConfig } from '../config.js';
-import { 
-  getTierModel, 
-  isTierReasoning, 
+import {
+  getTierModel,
+  isTierReasoning,
   getThinkingBudget,
   inferTierFromModel,
   TIER_RANKS,
-  type ComplexityTier 
+  type ComplexityTier,
 } from './tiers.js';
-import { 
-  processOverrides, 
-  type RoutingContext 
-} from './overrides.js';
+import { processOverrides, type RoutingContext } from './overrides.js';
+import { isVirtualModel } from '../provider/virtual-models.js';
 
 /**
  * Result of model routing decision
@@ -33,31 +31,37 @@ export interface ModelRoutingDecision {
   /** Classification confidence (0.0 - 1.0) */
   confidence: number;
   /** Reason for the routing decision */
-  reason: "routed" | "pinned" | "low-confidence" | "routing-disabled" | "budget-downgrade" | "budget-blocked";
+  reason:
+    | 'routed'
+    | 'pinned'
+    | 'low-confidence'
+    | 'routing-disabled'
+    | 'budget-downgrade'
+    | 'budget-blocked';
   /** Whether the routing decision was actually applied */
   applied: boolean;
   /** Thinking configuration for reasoning models */
-  thinking: { type: "enabled"; budget_tokens: number } | null;
+  thinking: { type: 'enabled'; budget_tokens: number } | null;
 }
 
 /**
  * Main model routing function
- * 
+ *
  * Takes a classification result and determines which model should be used
  * considering configuration overrides and routing rules.
- * 
+ *
  * @param classification - Result from complexity classifier
- * @param config - Routing configuration  
+ * @param config - Routing configuration
  * @param ctx - Request context with headers, original model, etc.
  * @returns Routing decision with target model and metadata
  */
 export function resolveModel(
   classification: ClassificationResult,
   config: SlimClawConfig['routing'],
-  ctx: RoutingContext
+  ctx: RoutingContext,
 ): ModelRoutingDecision {
-  const originalModel = ctx.originalModel ?? "anthropic/claude-sonnet-4-20250514";
-  
+  const originalModel = ctx.originalModel ?? 'anthropic/claude-sonnet-4-20250514';
+
   try {
     // Check if routing is disabled or config is invalid
     if (!config || !config.enabled) {
@@ -66,32 +70,32 @@ export function resolveModel(
         targetModel: originalModel,
         tier: classification.tier,
         confidence: classification.confidence,
-        reason: "routing-disabled",
+        reason: 'routing-disabled',
         applied: false,
-        thinking: null
+        thinking: null,
       });
     }
-    
+
     // Check for overrides (headers, pinned models, confidence threshold)
     const override = processOverrides(
       originalModel,
       classification.tier,
       classification.confidence,
       config,
-      ctx
+      ctx,
     );
-    
+
     if (override.shouldOverride) {
       // Determine reason based on override type
       let reason: ModelRoutingDecision['reason'];
-      if (override.reason === "pinned-header" || override.reason === "pinned-config") {
-        reason = "pinned";
+      if (override.reason === 'pinned-header' || override.reason === 'pinned-config') {
+        reason = 'pinned';
       } else if (override.details?.toLowerCase().includes('confidence')) {
-        reason = "low-confidence";
+        reason = 'low-confidence';
       } else {
-        reason = "routing-disabled";
+        reason = 'routing-disabled';
       }
-      
+
       return createDecision({
         originalModel,
         targetModel: override.overrideModel ?? originalModel,
@@ -99,46 +103,55 @@ export function resolveModel(
         confidence: classification.confidence,
         reason,
         applied: false,
-        thinking: isTierReasoning(classification.tier) ? {
-          type: "enabled",
-          budget_tokens: getThinkingBudget(config)
-        } : null
+        thinking: isTierReasoning(classification.tier)
+          ? {
+              type: 'enabled',
+              budget_tokens: getThinkingBudget(config),
+            }
+          : null,
       });
     }
-    
+
     // Normal routing: map tier to model
     const targetModel = getTierModel(classification.tier, config);
-    
-    // Check if downgrade is allowed
-    if (!config.allowDowngrade && isModelDowngrade(originalModel, targetModel)) {
+
+    // Check if downgrade is allowed (skip for virtual models — they have no inherent tier)
+    if (
+      !isVirtualModel(originalModel) &&
+      !config.allowDowngrade &&
+      isModelDowngrade(originalModel, targetModel)
+    ) {
       return createDecision({
         originalModel,
         targetModel: originalModel, // Keep original model
         tier: classification.tier,
         confidence: classification.confidence,
-        reason: "pinned", // Downgrade blocked acts like pinning
+        reason: 'pinned', // Downgrade blocked acts like pinning
         applied: false,
-        thinking: isTierReasoning(classification.tier) ? {
-          type: "enabled",
-          budget_tokens: getThinkingBudget(config)
-        } : null
+        thinking: isTierReasoning(classification.tier)
+          ? {
+              type: 'enabled',
+              budget_tokens: getThinkingBudget(config),
+            }
+          : null,
       });
     }
-    
+
     // Apply routing
     return createDecision({
       originalModel,
       targetModel,
       tier: classification.tier,
       confidence: classification.confidence,
-      reason: "routed",
+      reason: 'routed',
       applied: true,
-      thinking: isTierReasoning(classification.tier) ? {
-        type: "enabled",
-        budget_tokens: getThinkingBudget(config)
-      } : null
+      thinking: isTierReasoning(classification.tier)
+        ? {
+            type: 'enabled',
+            budget_tokens: getThinkingBudget(config),
+          }
+        : null,
     });
-    
   } catch (error) {
     // Fallback: return original model on any error
     console.error('SlimClaw routing error:', error);
@@ -147,9 +160,9 @@ export function resolveModel(
       targetModel: originalModel,
       tier: classification.tier,
       confidence: classification.confidence,
-      reason: "routing-disabled",
+      reason: 'routing-disabled',
       applied: false,
-      thinking: null
+      thinking: null,
     });
   }
 }
@@ -164,7 +177,7 @@ function createDecision(params: {
   confidence: number;
   reason: ModelRoutingDecision['reason'];
   applied: boolean;
-  thinking: { type: "enabled"; budget_tokens: number } | null;
+  thinking: { type: 'enabled'; budget_tokens: number } | null;
 }): ModelRoutingDecision {
   return {
     originalModel: params.originalModel,
@@ -173,7 +186,7 @@ function createDecision(params: {
     confidence: Math.round(params.confidence * 100) / 100, // Round to 2 decimal places
     reason: params.reason,
     applied: params.applied,
-    thinking: params.thinking
+    thinking: params.thinking,
   };
 }
 
@@ -187,11 +200,11 @@ function isModelDowngrade(fromModel: string, toModel: string): boolean {
   if (fromModel === toModel) {
     return false;
   }
-  
+
   // Get tiers for both models
   const fromTier = inferTierFromModel(fromModel);
   const toTier = inferTierFromModel(toModel);
-  
+
   // Compare using tier ranks: simple=1, mid=2, complex=3, reasoning=4
   // Downgrade = target tier rank < source tier rank
   return TIER_RANKS[toTier] < TIER_RANKS[fromTier];

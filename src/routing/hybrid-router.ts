@@ -4,9 +4,9 @@ import type { IRoutingProvider, RoutingDecision } from './types.js';
  * Circuit breaker states
  */
 enum CircuitBreakerState {
-  CLOSED = 'closed',     // Normal operation
-  OPEN = 'open',         // Circuit breaker tripped, skip primary
-  HALF_OPEN = 'half-open' // Testing if primary has recovered
+  CLOSED = 'closed', // Normal operation
+  OPEN = 'open', // Circuit breaker tripped, skip primary
+  HALF_OPEN = 'half-open', // Testing if primary has recovered
 }
 
 /**
@@ -14,7 +14,7 @@ enum CircuitBreakerState {
  */
 export class HybridRouter implements IRoutingProvider {
   public readonly name: string;
-  
+
   private circuitState: CircuitBreakerState = CircuitBreakerState.CLOSED;
   private failureCount = 0;
   private lastFailureTime = 0;
@@ -25,10 +25,10 @@ export class HybridRouter implements IRoutingProvider {
   constructor(
     private readonly primaryProvider: IRoutingProvider,
     private readonly fallbackProvider: IRoutingProvider,
-    options?: { maxFailures?: number; cooldownMs?: number; confidenceThreshold?: number }
+    options?: { maxFailures?: number; cooldownMs?: number; confidenceThreshold?: number },
   ) {
     this.name = `hybrid(${primaryProvider.name},${fallbackProvider.name})`;
-    
+
     // Set configurable options with defaults
     this.maxFailures = options?.maxFailures ?? 3;
     this.cooldownMs = options?.cooldownMs ?? 60000; // 60 seconds
@@ -54,7 +54,7 @@ export class HybridRouter implements IRoutingProvider {
       try {
         primaryDecision = this.primaryProvider.route(text, contextTokens, config);
         this.onPrimarySuccess();
-        
+
         // If primary confidence is sufficient, use it
         if (primaryDecision.confidence >= this.confidenceThreshold) {
           return primaryDecision;
@@ -79,12 +79,12 @@ export class HybridRouter implements IRoutingProvider {
 
     try {
       const fallbackDecision = this.fallbackProvider.route(text, contextTokens, config);
-      
+
       // Return the decision with higher confidence, preferring fallback on ties
       if (primaryDecision && primaryDecision.confidence > fallbackDecision.confidence) {
         return primaryDecision;
       }
-      
+
       return fallbackDecision;
     } catch (fallbackError) {
       // Both providers failed
@@ -92,11 +92,14 @@ export class HybridRouter implements IRoutingProvider {
         // Return primary decision even with low confidence if fallback fails
         return primaryDecision;
       }
-      
+
       // Both failed completely
       const primaryMessage = primaryError?.message || 'unknown error';
-      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-      throw new Error(`All routing providers failed. Primary: ${primaryMessage}, Fallback: ${fallbackMessage}`);
+      const fallbackMessage =
+        fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      throw new Error(
+        `All routing providers failed. Primary: ${primaryMessage}, Fallback: ${fallbackMessage}`,
+      );
     }
   }
 
@@ -111,7 +114,7 @@ export class HybridRouter implements IRoutingProvider {
     switch (this.circuitState) {
       case CircuitBreakerState.CLOSED:
         return true;
-        
+
       case CircuitBreakerState.OPEN:
         // Check if cooldown period has passed
         if (Date.now() - this.lastFailureTime >= this.cooldownMs) {
@@ -119,10 +122,10 @@ export class HybridRouter implements IRoutingProvider {
           return true;
         }
         return false;
-        
+
       case CircuitBreakerState.HALF_OPEN:
         return true;
-        
+
       default:
         return false;
     }
@@ -163,7 +166,7 @@ export class HybridRouter implements IRoutingProvider {
     return {
       state: this.circuitState,
       failureCount: this.failureCount,
-      lastFailureTime: this.lastFailureTime
+      lastFailureTime: this.lastFailureTime,
     };
   }
 
