@@ -1,5 +1,4 @@
 import type { IRoutingProvider, RoutingDecision } from './types.js';
-import { classifyPromptFast } from './fast-classifier.js';
 
 /**
  * Circuit breaker states
@@ -47,21 +46,6 @@ export class HybridRouter implements IRoutingProvider {
    * Route using primary provider with fallback and circuit breaker logic
    */
   route(text: string, contextTokens: number, config?: Record<string, unknown>): RoutingDecision {
-    // Fast classification using multi-signal analysis
-    const fastResult = classifyPromptFast(text);
-
-    // If fast classifier is confident (>= 75%), use it directly
-    if (fastResult.confidence >= 0.75) {
-      return {
-        tier: fastResult.tier,
-        confidence: fastResult.confidence,
-        model: fastResult.tier,
-        savings: 0,
-        costEstimate: 0,
-      };
-    }
-
-    // Otherwise, fall through to primary/fallback providers for more analysis
     let primaryDecision: RoutingDecision | null = null;
     let primaryError: Error | null = null;
 

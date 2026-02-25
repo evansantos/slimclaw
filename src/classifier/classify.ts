@@ -51,27 +51,29 @@ export function classifyComplexity(messages: Message[]): ClassificationResult {
   if (lastUserMessage) {
     const lastUserContent =
       typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '';
-
-    // TEST: Does content even have "hi" in it?
-    const hasHi = /hi/i.test(lastUserContent);
     const contentLen = lastUserContent.length;
 
     // If content is short (< 300 chars) and contains "hi", "hello", etc → simple
     if (contentLen > 0 && contentLen < 300) {
       const simpleWords = ['hi', 'hey', 'hello', 'yes', 'no', 'ok', 'thanks', 'bye'];
+      const matchedWords: string[] = [];
 
       for (const word of simpleWords) {
         // Check with word boundaries to avoid false matches in longer words
         const wordRegex = new RegExp(`\\b${word}\\b`, 'i');
         if (wordRegex.test(lastUserContent)) {
-          return {
-            tier: 'simple',
-            confidence: 0.95,
-            reason: `simple greeting (matched: "${word}", len=${contentLen}, hasHi=${hasHi})`,
-            scores: { simple: 3.0, mid: 0.0, complex: 0.0, reasoning: 0.0 },
-            signals: ['keyword:simple-greeting', 'structural:short-content'],
-          };
+          matchedWords.push(word);
         }
+      }
+
+      if (matchedWords.length > 0) {
+        return {
+          tier: 'simple',
+          confidence: 0.95,
+          reason: `simple tier - very brief conversation (greeting: ${matchedWords.join(', ')})`,
+          scores: { simple: 3.0, mid: 0.0, complex: 0.0, reasoning: 0.0 },
+          signals: [...matchedWords, 'keyword:simple-greeting', 'structural:short-content'],
+        };
       }
     }
   }

@@ -20,22 +20,22 @@ export const COMPLEXITY_SIGNALS: Record<ComplexityTier, ComplexitySignal[]> = {
   simple: [
     {
       keywords: ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening'],
-      weight: 3.0, // Boosted: greetings should strongly indicate simple tier
+      weight: 1.5, // Moderate boost: greetings are simple but shouldn't override code/debug signals
       description: 'Greetings',
     },
     {
       keywords: ['yes', 'no', 'ok', 'okay', 'thanks', 'thank you', 'please', 'sure'],
-      weight: 2.5, // Boosted: simple responses
+      weight: 1.2, // Moderate boost: simple responses
       description: 'Simple responses',
     },
     {
       keywords: ['what', 'when', 'where', 'who', 'which', 'how much', 'how many'],
-      weight: 1.2, // Boosted: simple questions
+      weight: 0.8,
       description: 'Simple questions',
     },
     {
       keywords: ['quick', 'brief', 'short', 'simple', 'just'],
-      weight: 1.0, // Boosted: brevity indicators
+      weight: 0.5,
       description: 'Brevity indicators',
     },
   ],
@@ -109,7 +109,7 @@ export const COMPLEXITY_SIGNALS: Record<ComplexityTier, ComplexitySignal[]> = {
   reasoning: [
     {
       keywords: ['prove', 'proof', 'theorem', 'mathematical', 'equation', 'formula'],
-      weight: 1.5,
+      weight: 1.6,
       description: 'Mathematical proofs',
     },
     {
