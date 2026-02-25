@@ -422,7 +422,13 @@ function estimateModelCost(
 /**
  * Extract provider credentials from OpenClaw config
  */
-function extractProviderCredentials(config: any): Map<string, ProviderCredentials> {
+function extractProviderCredentials(
+  config: any,
+  providerOverrides?: Record<
+    string,
+    { baseUrl?: string | undefined; apiKeyEnv?: string | undefined; apiKey?: string | undefined }
+  >,
+): Map<string, ProviderCredentials> {
   const credentials = new Map<string, ProviderCredentials>();
   if (config?.models?.providers) {
     for (const [id, providerConfig] of Object.entries(config.models.providers)) {
@@ -435,9 +441,22 @@ function extractProviderCredentials(config: any): Map<string, ProviderCredential
       }
       const pc = providerConfig as { baseUrl?: string; apiKey?: string };
       if (pc.baseUrl) {
+        // Check for custom env var name in providerOverrides
+        const override = providerOverrides?.[id];
+        const customEnvName = override?.apiKeyEnv;
+        const customApiKey = override?.apiKey;
+
+        // Priority: explicit apiKey > custom env var > default env var convention
+        const apiKey =
+          customApiKey ||
+          pc.apiKey ||
+          (customEnvName ? process.env[customEnvName] : undefined) ||
+          process.env[`${id.toUpperCase()}_API_KEY`] ||
+          '';
+
         credentials.set(id, {
-          baseUrl: pc.baseUrl,
-          apiKey: pc.apiKey || process.env[`${id.toUpperCase()}_API_KEY`] || '',
+          baseUrl: override?.baseUrl || pc.baseUrl,
+          apiKey,
         });
       }
     }
@@ -572,7 +591,10 @@ const slimclawPlugin = {
     // =========================================================================
     if (typedConfig.proxy?.enabled) {
       try {
-        const providerCredentials = extractProviderCredentials(api.config);
+        const providerCredentials = extractProviderCredentials(
+          api.config,
+          typedConfig.proxy.providerOverrides,
+        );
 
         if (providerCredentials.size === 0) {
           api.logger.info('[SlimClaw] Warning: No provider credentials found, proxy may not work');
