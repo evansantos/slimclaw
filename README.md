@@ -4,13 +4,14 @@
 [![CI](https://github.com/evansantos/slimclaw/actions/workflows/ci.yml/badge.svg)](https://github.com/evansantos/slimclaw/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Advanced inference optimization plugin for OpenClaw. Provides intelligent model routing, cross-provider pricing, dynamic cost tracking, latency monitoring, and prompt caching optimization across 12+ models on Anthropic and OpenRouter.
+Advanced inference optimization plugin for OpenClaw. Provides intelligent model routing, cross-provider pricing, dynamic cost tracking, latency monitoring, prompt caching optimization, and multi-provider embedding service across 12+ models on Anthropic and OpenRouter.
 
-**0 vulnerabilities** · **618 tests passing** · **Node 22+**
+**0 vulnerabilities** · **855 tests passing** · **Node 22+**
 
 ## Features
 
 ### 🎯 Intelligent Routing
+
 - **[ClawRouter](https://github.com/BlockRunAI/clawrouter) Integration** — 15-dimension complexity scoring as primary classifier, with heuristic fallback
 - **Cross-Provider Support** — Route across Anthropic and OpenRouter providers seamlessly
 - **Tier-Based Classification** — Automatic model selection based on request complexity (simple/mid/complex/reasoning)
@@ -18,17 +19,20 @@ Advanced inference optimization plugin for OpenClaw. Provides intelligent model 
 - **Shadow Mode** — Observe routing decisions without mutation (active mode blocked on OpenClaw hooks)
 
 ### 📊 Metrics & Analytics
+
 - **Request Tracking** — Input/output tokens, cache reads/writes, estimated savings per request
 - **Dynamic Pricing** — Live pricing data from OpenRouter API with 6-hour TTL caching
 - **Latency Monitoring** — Per-model P50/P95/avg latency tracking with circular buffer (100 samples default)
 - **Dashboard** — Real-time web UI at `http://localhost:3333` with dark theme
 
 ### 💾 Caching Optimization
+
 - **Cache Breakpoint Injection** — Optimizes Anthropic's prompt caching for maximum efficiency
 - **Smart Windowing** — Maintains conversation context while minimizing redundant tokens
 - **90% Cache Savings** — Cache reads are significantly cheaper than regular input tokens
 
 ### 🔮 Shadow Mode
+
 - **Risk-Free Operation** — All routing runs in observe-only mode, no request mutation
 - **Comprehensive Logging** — Detailed routing decisions with cost projections and provider recommendations
 - **Full Pipeline Simulation** — Complete shadow execution of classify → resolve → recommend → log
@@ -300,6 +304,7 @@ SlimClaw v0.2.0 operates exclusively in **shadow mode** due to OpenClaw's curren
 - **Cannot mutate** requests until OpenClaw supports `historyMessages` mutation
 
 **Example Shadow Log:**
+
 ```
 [SlimClaw] 🔮 Shadow route: opus-4-6 → o4-mini (via openrouter)
            Tier: reasoning (0.92) | Savings: 78% | $0.045/1k → $0.003/1k
@@ -307,23 +312,23 @@ SlimClaw v0.2.0 operates exclusively in **shadow mode** due to OpenClaw's curren
 
 ### Model Tier Mapping
 
-| Complexity | Default Model | Use Cases |
-|------------|---------------|-----------|
-| `simple` | Claude 3 Haiku | Basic Q&A, simple tasks, casual chat |
-| `mid` | Claude 4 Sonnet | General development, analysis, writing |
-| `complex` | Claude 4 Opus | Architecture, complex debugging, research |
-| `reasoning` | Claude 4 Opus | Multi-step logic, planning, deep analysis |
+| Complexity  | Default Model   | Use Cases                                 |
+| ----------- | --------------- | ----------------------------------------- |
+| `simple`    | Claude 3 Haiku  | Basic Q&A, simple tasks, casual chat      |
+| `mid`       | Claude 4 Sonnet | General development, analysis, writing    |
+| `complex`   | Claude 4 Opus   | Architecture, complex debugging, research |
+| `reasoning` | Claude 4 Opus   | Multi-step logic, planning, deep analysis |
 
 ## API Reference
 
 ### Core Routing
 
 ```typescript
-import { 
-  resolveModel, 
+import {
+  resolveModel,
   buildShadowRecommendation,
   makeRoutingDecision,
-  type ShadowRecommendation 
+  type ShadowRecommendation,
 } from './routing/index.js';
 
 // Generate routing decision
@@ -331,7 +336,11 @@ const decision = resolveModel(classification, routingConfig, context);
 
 // Build complete shadow recommendation
 const recommendation = buildShadowRecommendation(
-  runId, actualModel, decision, tierProviders, pricing
+  runId,
+  actualModel,
+  decision,
+  tierProviders,
+  pricing,
 );
 ```
 
@@ -343,9 +352,9 @@ import { DynamicPricingCache, DEFAULT_DYNAMIC_PRICING_CONFIG } from './routing/d
 const pricing = new DynamicPricingCache({
   enabled: true,
   openRouterApiUrl: 'https://openrouter.ai/api/v1/models',
-  cacheTtlMs: 21600000,    // 6 hours
+  cacheTtlMs: 21600000, // 6 hours
   fetchTimeoutMs: 5000,
-  fallbackToHardcoded: true
+  fallbackToHardcoded: true,
 });
 
 // Get live pricing (sync — falls back to hardcoded if cache miss)
@@ -359,12 +368,16 @@ await pricing.refresh();
 ### Latency Tracking
 
 ```typescript
-import { LatencyTracker, DEFAULT_LATENCY_TRACKER_CONFIG, type LatencyStats } from './routing/latency-tracker.js';
+import {
+  LatencyTracker,
+  DEFAULT_LATENCY_TRACKER_CONFIG,
+  type LatencyStats,
+} from './routing/latency-tracker.js';
 
 const tracker = new LatencyTracker({
   enabled: true,
-  windowSize: 100,         // circular buffer per model
-  outlierThresholdMs: 60000
+  windowSize: 100, // circular buffer per model
+  outlierThresholdMs: 60000,
 });
 
 // Record request latency (tokenCount optional — enables throughput calc)
@@ -382,7 +395,7 @@ import { resolveProvider, type ProviderResolution } from './routing/provider-res
 
 const resolution = resolveProvider('openai/gpt-4-turbo', {
   'openai/*': 'openrouter',
-  'anthropic/*': 'anthropic'
+  'anthropic/*': 'anthropic',
 });
 // { provider: 'openrouter', matchedPattern: 'openai/*', confidence: 1.0 }
 ```
@@ -394,7 +407,7 @@ const resolution = resolveProvider('openai/gpt-4-turbo', {
 - **618 tests passing** across 43 test files
 - **3 major phases** complete:
   - **Phase 1:** Cross-provider pricing (PR #24)
-  - **Phase 2a:** Shadow routing (PR #25)  
+  - **Phase 2a:** Shadow routing (PR #25)
   - **Phase 3a:** Dynamic pricing + latency tracking (PR #29)
 - **12+ models supported** across Anthropic and OpenRouter providers
 - **Shadow mode only** — active routing blocked on OpenClaw hook mutation support
@@ -402,10 +415,126 @@ const resolution = resolveProvider('openai/gpt-4-turbo', {
 
 ### Cross-Provider Coverage
 
-| Provider | Models | Pricing | Status |
-|----------|--------|---------|--------|
-| Anthropic | Claude 3/4 series | ✅ Dynamic + Hardcoded | Production |
-| OpenRouter | 12+ models (OpenAI, Google, etc.) | ✅ Live API pricing | Production |
+| Provider   | Models                            | Pricing                | Status     |
+| ---------- | --------------------------------- | ---------------------- | ---------- |
+| Anthropic  | Claude 3/4 series                 | ✅ Dynamic + Hardcoded | Production |
+| OpenRouter | 12+ models (OpenAI, Google, etc.) | ✅ Live API pricing    | Production |
+
+## Embeddings Router 🧬
+
+SlimClaw includes a production-ready embedding router for multi-provider vector generation with intelligent caching, cost tracking, and configurable complexity-based model selection.
+
+### Features
+
+- **Intelligent Routing** — Classify text complexity (simple/mid/complex) and select optimal embedding model
+- **Smart Caching** — SQLite-backed persistent cache with TTL and duplicate detection
+- **Cost Tracking** — Per-model pricing with real-time metrics and savings calculation
+- **Retry Logic** — Exponential backoff with configurable retries and timeout protection
+- **Configurable Thresholds** — Tune complexity detection via config (default: 200/1000 chars)
+- **Dashboard Integration** — Real-time metrics at `/api/embeddings/metrics`
+
+### Quick Start
+
+```typescript
+import { EmbeddingRouter } from 'slimclaw';
+
+const router = new EmbeddingRouter({
+  providers: [
+    new AnthropicProvider({ apiKey: process.env.ANTHROPIC_API_KEY }),
+    new OpenRouterProvider({ apiKey: process.env.OPENROUTER_API_KEY }),
+  ],
+  config: {
+    tiers: {
+      simple: 'openai/text-embedding-3-small',
+      mid: 'openai/text-embedding-3-large',
+      complex: 'cohere/cohere-embed-english-v3.0',
+    },
+    retry: {
+      maxRetries: 3,
+      baseDelayMs: 1000,
+      timeoutMs: 30000,
+    },
+  },
+});
+
+const result = await router.embed('Hello, world!');
+console.log(result.embedding); // [0.123, 0.456, ...]
+```
+
+### Configuration
+
+Add to `slimclaw.config.json`:
+
+```json
+{
+  "embeddings": {
+    "enabled": true,
+    "routing": {
+      "tiers": {
+        "simple": "openai/text-embedding-3-small",
+        "mid": "openai/text-embedding-3-large",
+        "complex": "cohere/cohere-embed-english-v3.0"
+      }
+    },
+    "caching": {
+      "enabled": true,
+      "ttlMs": 604800000,
+      "maxSize": 1000
+    },
+    "classifier": {
+      "simpleMaxChars": 200,
+      "midMaxChars": 1000
+    },
+    "retry": {
+      "maxRetries": 3,
+      "baseDelayMs": 1000,
+      "timeoutMs": 30000
+    },
+    "metrics": {
+      "enabled": true,
+      "trackCosts": true
+    }
+  }
+}
+```
+
+### Dashboard Metrics
+
+Access embedding metrics at: `GET /api/embeddings/metrics`
+
+```json
+{
+  "totalRequests": 42,
+  "cacheHits": 38,
+  "cacheMisses": 4,
+  "totalCost": 0.15,
+  "averageDurationMs": 245,
+  "requestsByTier": {
+    "simple": 20,
+    "mid": 15,
+    "complex": 7
+  }
+}
+```
+
+### Retry Strategy
+
+- **Exponential Backoff:** 1s → 2s → 4s delays between attempts
+- **Smart Error Handling:** Retries 5xx/timeouts, skips 4xx (client errors)
+- **Timeout Protection:** Per-request 30s timeout prevents hanging
+- **Error Context:** Logs include provider name, attempt count, original error
+
+### Testing
+
+Embeddings tests included in main test suite:
+
+```bash
+npm test -- src/embeddings/
+```
+
+Coverage: 57+ tests covering routing, caching, retry logic, and metrics.
+
+---
 
 ### Roadmap
 
@@ -413,6 +542,7 @@ const resolution = resolveProvider('openai/gpt-4-turbo', {
 - **Budget Enforcement** — Per-session/daily spend limits with automatic tier capping
 - **A/B Testing** — Route percentages across providers to compare quality/cost tradeoffs
 - **Multi-Factor Routing** — Combine cost + latency + quality signals for optimal model selection
+- **Embedding Pooling** — Batch multiple embedding requests for efficiency
 
 ### Dependencies
 
@@ -425,6 +555,7 @@ SlimClaw can operate as an active provider proxy, intercepting model requests an
 ### Quick Start
 
 1. Enable proxy in `slimclaw.config.json`:
+
 ```json
 {
   "enabled": true,
@@ -444,6 +575,7 @@ SlimClaw can operate as an active provider proxy, intercepting model requests an
 ```
 
 2. Set your OpenClaw model to `slimclaw/auto`:
+
 ```json
 {
   "defaultModel": "slimclaw/auto"
@@ -460,14 +592,14 @@ SlimClaw can operate as an active provider proxy, intercepting model requests an
 
 ### Supported (Phase 1)
 
-| Feature | Status |
-|---------|--------|
-| `slimclaw/auto` model | ✅ |
-| OpenRouter forwarding | ✅ |
-| Streaming responses | ✅ |
-| Budget enforcement | ✅ |
-| A/B testing | ✅ |
-| Direct Anthropic API | ⏳ Phase 2 |
+| Feature                 | Status     |
+| ----------------------- | ---------- |
+| `slimclaw/auto` model   | ✅         |
+| OpenRouter forwarding   | ✅         |
+| Streaming responses     | ✅         |
+| Budget enforcement      | ✅         |
+| A/B testing             | ✅         |
+| Direct Anthropic API    | ⏳ Phase 2 |
 | Multiple virtual models | ⏳ Phase 2 |
 
 ## Contributing

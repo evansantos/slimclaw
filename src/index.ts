@@ -35,6 +35,29 @@ export {
   type HistoryResponse,
 } from './dashboard/index.js';
 
+// Embeddings exports
+export {
+  EmbeddingRouter,
+  type EmbeddingRouterConfig,
+  AnthropicProvider,
+  OpenRouterProvider,
+  type EmbeddingProvider,
+  type EmbeddingResult,
+  EmbeddingCache,
+  EmbeddingMetricsTracker,
+  classifyComplexity,
+  type ComplexityTier as EmbeddingComplexityTier,
+  type Provider as EmbeddingProvider_Type,
+  type EmbeddingConfig,
+  type RoutingConfig as EmbeddingRoutingConfig,
+  type CacheConfig as EmbeddingCacheConfig,
+  type MetricsConfig as EmbeddingMetricsConfig,
+  type EmbeddingRequest,
+  type EmbeddingResponse,
+  type CachedEmbedding,
+  type EmbeddingMetrics,
+} from './embeddings/index.js';
+
 // Import dashboard functionality for internal use
 import { createDashboard } from './dashboard/index.js';
 import type { MetricsCollector, OptimizerMetrics, MetricsStats } from './metrics/index.js';
