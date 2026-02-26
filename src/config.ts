@@ -226,14 +226,14 @@ export const SlimClawConfigSchema = z.object({
       routing: z
         .object({
           tiers: z.record(z.string()).default({
-            simple: 'voyage-3-lite',
-            mid: 'voyage-3',
-            complex: 'voyage-3-large',
+            simple: 'openai/text-embedding-3-small',
+            mid: 'openai/text-embedding-3-large',
+            complex: 'cohere/cohere-embed-english-v3.0',
           }),
           tierProviders: z.record(z.enum(['anthropic', 'openrouter'])).default({
-            'voyage-3-lite': 'openrouter',
-            'voyage-3': 'openrouter',
-            'voyage-3-large': 'openrouter',
+            'openai/text-embedding-3-small': 'openrouter',
+            'openai/text-embedding-3-large': 'openrouter',
+            'cohere/cohere-embed-english-v3.0': 'openrouter',
           }),
         })
         .default({}),

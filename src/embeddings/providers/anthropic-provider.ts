@@ -14,6 +14,9 @@ export class AnthropicProvider implements EmbeddingProvider {
   /**
    * Generate embedding using Anthropic API
    *
+   * Note: Anthropic embeddings API is in beta. The request format (input + model)
+   * follows standard embeddings API conventions. If the API evolves, this may need updates.
+   *
    * @param text - Input text
    * @param model - Model identifier
    * @returns Embedding result
@@ -28,7 +31,7 @@ export class AnthropicProvider implements EmbeddingProvider {
       },
       body: JSON.stringify({
         input: text,
-        model,
+        model, // Model parameter follows standard embeddings API pattern
       }),
     });
 
@@ -46,15 +49,18 @@ export class AnthropicProvider implements EmbeddingProvider {
 
   /**
    * Calculate cost for Anthropic embeddings
-   * Note: Anthropic pricing TBD - using placeholder
+   *
+   * PLACEHOLDER: Anthropic embeddings pricing
+   * TODO: Update with official pricing from https://www.anthropic.com/pricing once available
+   * Current approximation: ~$0.10 per 1M tokens (assuming similar to OpenAI)
+   * Users can override via configuration if actual pricing differs
    *
    * @param tokens - Number of tokens
    * @param model - Model identifier
    * @returns Cost in dollars
    */
   calculateCost(tokens: number): number {
-    // Placeholder: Assume similar to OpenAI pricing
-    // ~$0.10 per 1M tokens
+    // PLACEHOLDER pricing - update when official rates are published
     return (tokens / 1_000_000) * 0.1;
   }
 }
