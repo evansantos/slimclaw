@@ -72,11 +72,16 @@ export interface HistoryResponse {
 /**
  * Create dashboard instance with default configuration
  */
-import type { MetricsCollector } from '../metrics/index.js';
+import type { MetricsCollectorAdapter } from '../types/metrics-adapter.js';
+import type { EmbeddingMetricsAdapter } from '../types/embeddings-adapter.js';
 import { DashboardServer } from './server.js';
 
-export function createDashboard(collector: MetricsCollector, port = 3001) {
-  return new DashboardServer(collector, { port, host: '0.0.0.0', basePath: '' });
+export function createDashboard(
+  collector: MetricsCollectorAdapter,
+  port = 3001,
+  embeddingMetrics?: EmbeddingMetricsAdapter,
+) {
+  return new DashboardServer(collector, { port, host: '0.0.0.0', basePath: '' }, embeddingMetrics);
 }
 
 /**
@@ -134,11 +139,11 @@ export class DashboardUtils {
     secondary: string;
   } {
     return {
-      primary: '#3B82F6',   // Blue
-      success: '#10B981',   // Green
-      warning: '#F59E0B',   // Yellow
-      danger: '#EF4444',    // Red
-      info: '#8B5CF6',      // Purple
+      primary: '#3B82F6', // Blue
+      success: '#10B981', // Green
+      warning: '#F59E0B', // Yellow
+      danger: '#EF4444', // Red
+      info: '#8B5CF6', // Purple
       secondary: '#6B7280', // Gray
     };
   }
@@ -156,24 +161,30 @@ export class DashboardUtils {
       switch (period) {
         case 'hour':
           date.setHours(date.getHours() - i);
-          labels.push(date.toLocaleTimeString('en-US', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          }));
+          labels.push(
+            date.toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+          );
           break;
         case 'day':
           date.setDate(date.getDate() - i);
-          labels.push(date.toLocaleDateString('en-US', { 
-            month: 'short', 
-            day: 'numeric' 
-          }));
+          labels.push(
+            date.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+            }),
+          );
           break;
         case 'week':
-          date.setDate(date.getDate() - (i * 7));
-          labels.push(`Week of ${date.toLocaleDateString('en-US', { 
-            month: 'short', 
-            day: 'numeric' 
-          })}`);
+          date.setDate(date.getDate() - i * 7);
+          labels.push(
+            `Week of ${date.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+            })}`,
+          );
           break;
       }
     }
@@ -225,7 +236,7 @@ export class DashboardError extends Error {
   constructor(
     message: string,
     public code?: string,
-    public statusCode?: number
+    public statusCode?: number,
   ) {
     super(message);
     this.name = 'DashboardError';
@@ -236,7 +247,10 @@ export class DashboardError extends Error {
  * Connection error for dashboard server
  */
 export class DashboardConnectionError extends DashboardError {
-  constructor(message: string, public port: number) {
+  constructor(
+    message: string,
+    public port: number,
+  ) {
     super(message, 'CONNECTION_ERROR', 500);
   }
 }

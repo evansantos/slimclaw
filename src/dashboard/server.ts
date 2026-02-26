@@ -5,7 +5,8 @@
 
 // Dynamic imports for better test compatibility
 import type { Hono } from 'hono';
-import type { MetricsCollector } from '../metrics/index.js';
+import type { MetricsCollectorAdapter } from '../types/metrics-adapter.js';
+import type { EmbeddingMetricsAdapter } from '../types/embeddings-adapter.js';
 import type { Server } from 'node:http';
 import { setupRoutes } from './routes.js';
 
@@ -23,14 +24,15 @@ export class DashboardServer {
   private config: DashboardConfig;
 
   constructor(
-    private collector: MetricsCollector,
-    config: Partial<DashboardConfig> = {}
+    private collector: MetricsCollectorAdapter,
+    config: Partial<DashboardConfig> = {},
+    private embeddingMetrics?: EmbeddingMetricsAdapter,
   ) {
     this.config = {
       port: 3001,
       host: '0.0.0.0',
       basePath: '',
-      ...config
+      ...config,
     };
     this.initialized = this.initialize();
   }
@@ -40,10 +42,10 @@ export class DashboardServer {
       // Dynamic import but make app available immediately for testing
       const { Hono } = await import('hono');
       this.app = new Hono({ strict: false });
-      
+
       // Setup routes first (synchronous)
       this.setupRoutes();
-      
+
       // Then setup middleware (can be async)
       await this.setupMiddleware();
     } catch (error) {
@@ -68,17 +70,23 @@ export class DashboardServer {
       const publicPath = join(__dirname, 'public');
 
       // Enable CORS for API calls
-      this.app!.use('*', cors({
-        origin: ['http://localhost:3000', 'http://localhost:3001'],
-        allowMethods: ['GET', 'POST', 'PUT', 'DELETE'],
-        allowHeaders: ['Content-Type', 'Authorization'],
-      }));
+      this.app!.use(
+        '*',
+        cors({
+          origin: ['http://localhost:3000', 'http://localhost:3001'],
+          allowMethods: ['GET', 'POST', 'PUT', 'DELETE'],
+          allowHeaders: ['Content-Type', 'Authorization'],
+        }),
+      );
 
       // Serve static files (CSS, JS, assets)
-      this.app!.use('/static/*', serveStatic({ 
-        root: publicPath,
-        rewriteRequestPath: (path: string) => path.replace(/^\/static/, ''),
-      }));
+      this.app!.use(
+        '/static/*',
+        serveStatic({
+          root: publicPath,
+          rewriteRequestPath: (path: string) => path.replace(/^\/static/, ''),
+        }),
+      );
     } catch (error) {
       console.warn('Failed to setup middleware, some features may not work:', error);
     }
@@ -91,7 +99,7 @@ export class DashboardServer {
     if (!this.app) {
       throw new Error('Cannot setup routes: app not initialized');
     }
-    const routes = setupRoutes(this.collector);
+    const routes = setupRoutes(this.collector, this.embeddingMetrics);
     this.app.route('/', routes);
   }
 
@@ -100,7 +108,7 @@ export class DashboardServer {
    */
   async start(): Promise<void> {
     await this.initialized; // Wait for initialization to complete
-    
+
     if (!this.app) {
       throw new Error('Dashboard app not initialized');
     }
@@ -108,7 +116,7 @@ export class DashboardServer {
     try {
       const { serve } = await import('@hono/node-server');
       const app = this.app;
-      
+
       this.server = serve({
         fetch: app.fetch,
         port: this.config.port,
@@ -118,14 +126,18 @@ export class DashboardServer {
       // Handle EADDRINUSE gracefully instead of crashing
       this.server.on('error', (err: NodeJS.ErrnoException) => {
         if (err.code === 'EADDRINUSE') {
-          console.warn(`⚠️ SlimClaw Dashboard: port ${this.config.port} already in use, skipping dashboard`);
+          console.warn(
+            `⚠️ SlimClaw Dashboard: port ${this.config.port} already in use, skipping dashboard`,
+          );
           this.server = null;
         } else {
           console.error('SlimClaw Dashboard server error:', err);
         }
       });
 
-      console.log(`🌟 SlimClaw Dashboard running at http://${this.config.host}:${this.config.port}`);
+      console.log(
+        `🌟 SlimClaw Dashboard running at http://${this.config.host}:${this.config.port}`,
+      );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
         console.warn(`⚠️ SlimClaw Dashboard: port ${this.config.port} already in use, skipping`);
@@ -170,16 +182,16 @@ export class DashboardServer {
  * Helper function to create and start dashboard
  */
 export async function startDashboard(
-  collector: MetricsCollector,
-  config?: Partial<DashboardConfig>
+  collector: MetricsCollectorAdapter,
+  config?: Partial<DashboardConfig>,
 ): Promise<DashboardServer> {
-  const server = new DashboardServer(collector, { 
-    port: 3001, 
-    host: '0.0.0.0', 
+  const server = new DashboardServer(collector, {
+    port: 3001,
+    host: '0.0.0.0',
     basePath: '',
-    ...config 
+    ...config,
   });
-  
+
   await server.start();
   return server;
 }

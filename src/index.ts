@@ -35,6 +35,11 @@ export {
   type HistoryResponse,
 } from './dashboard/index.js';
 
+// Type adapter exports
+export { type EmbeddingMetricsAdapter } from './types/embeddings-adapter.js';
+export { type MetricsCollectorAdapter } from './types/metrics-adapter.js';
+export { calculateCacheHitRate } from './dashboard/cache-utils.js';
+
 // Embeddings exports
 export {
   EmbeddingRouter,
@@ -61,6 +66,29 @@ export {
 // Import dashboard functionality for internal use
 import { createDashboard } from './dashboard/index.js';
 import type { MetricsCollector, OptimizerMetrics, MetricsStats } from './metrics/index.js';
+
+// Embeddings factory
+import { createEmbeddingRouter } from './config/embeddings.js';
+import type { EmbeddingRouter } from './embeddings/index.js';
+
+// Module-level EmbeddingRouter instance (set during register())
+let embeddingRouterInstance: EmbeddingRouter | null = null;
+
+/**
+ * Get the current EmbeddingRouter instance
+ * @returns EmbeddingRouter instance or null if not initialized
+ */
+export function getEmbeddingRouter(): EmbeddingRouter | null {
+  return embeddingRouterInstance;
+}
+
+/**
+ * Reset the EmbeddingRouter instance (for testing)
+ * @internal
+ */
+export function resetEmbeddingRouter(): void {
+  embeddingRouterInstance = null;
+}
 
 // Proxy provider imports
 import {
@@ -596,6 +624,22 @@ const slimclawPlugin = {
       } catch (error) {
         api.logger.info(
           `[SlimClaw] A/B testing initialization failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    // Initialize EmbeddingRouter
+    if (typedConfig.embeddings?.enabled) {
+      try {
+        embeddingRouterInstance = createEmbeddingRouter(typedConfig);
+        if (embeddingRouterInstance) {
+          api.logger.info('[SlimClaw] EmbeddingRouter initialized');
+        } else {
+          api.logger.info('[SlimClaw] EmbeddingRouter not initialized (no API keys or disabled)');
+        }
+      } catch (error) {
+        api.logger.info(
+          `[SlimClaw] EmbeddingRouter initialization failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
@@ -1275,8 +1319,22 @@ const slimclawPlugin = {
       try {
         api.logger.info(`Starting SlimClaw dashboard on port ${pluginConfig.dashboard.port}`);
 
-        // Create dashboard with our metrics adapter
-        const dashboard = createDashboard(metricsAdapter as any, pluginConfig.dashboard.port);
+        // Create dashboard with our metrics adapter and embedding metrics
+        // Wrap the router to provide the EmbeddingMetricsAdapter interface
+        const embeddingMetrics:
+          | import('./types/embeddings-adapter.js').EmbeddingMetricsAdapter
+          | undefined = embeddingRouterInstance
+          ? {
+              getMetrics: () => embeddingRouterInstance!.getMetrics(),
+              reset: () => embeddingRouterInstance!.resetMetrics(),
+            }
+          : undefined;
+
+        const dashboard = createDashboard(
+          metricsAdapter,
+          pluginConfig.dashboard.port,
+          embeddingMetrics,
+        );
 
         // Start the dashboard server asynchronously
         dashboard

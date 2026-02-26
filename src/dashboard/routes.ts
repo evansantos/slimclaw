@@ -8,10 +8,11 @@ import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import type { MetricsCollector } from '../metrics/index.js';
+import type { MetricsCollectorAdapter } from '../types/metrics-adapter.js';
+import type { EmbeddingMetricsAdapter } from '../types/embeddings-adapter.js';
 import type { OptimizerMetrics, ComplexityTier } from '../metrics/types.js';
 import { createSlimClawLogger } from '../logging/index.js';
-import type { EmbeddingMetricsTracker } from '../embeddings/metrics/embedding-metrics.js';
+import { calculateCacheHitRate as calculateEmbeddingCacheHitRate } from './cache-utils.js';
 
 // Get current file's directory for template serving
 const __filename = fileURLToPath(import.meta.url);
@@ -39,8 +40,8 @@ interface GroupedMetrics {
 }
 
 export function setupRoutes(
-  collector: MetricsCollector,
-  embeddingMetrics?: EmbeddingMetricsTracker,
+  collector: MetricsCollectorAdapter,
+  embeddingMetrics?: EmbeddingMetricsAdapter,
 ): Hono {
   const app = new Hono();
   const logger = createSlimClawLogger('info', { component: 'dashboard' });
@@ -357,10 +358,7 @@ export function setupRoutes(
       };
 
       // Calculate cache hit rate
-      const cacheHitRate =
-        metrics.totalRequests > 0
-          ? Math.round((metrics.cacheHits / metrics.totalRequests) * 10000) / 100
-          : 0;
+      const cacheHitRate = calculateEmbeddingCacheHitRate(metrics.cacheHits, metrics.totalRequests);
 
       return c.json({
         timestamp: new Date().toISOString(),

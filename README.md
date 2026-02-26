@@ -463,7 +463,14 @@ console.log(result.embedding); // [0.123, 0.456, ...]
 
 ### Configuration
 
-Add to `slimclaw.config.json`:
+**1. Set up API keys** — Create `.env` from `.env.example`:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+OPENROUTER_API_KEY=your-openrouter-key-here
+```
+
+**2. Enable in config** — Add to `slimclaw.config.json` or OpenClaw's `openclaw.json` under `plugins.slimclaw`:
 
 ```json
 {
@@ -471,24 +478,20 @@ Add to `slimclaw.config.json`:
     "enabled": true,
     "routing": {
       "tiers": {
-        "simple": "openai/text-embedding-3-small",
-        "mid": "openai/text-embedding-3-large",
-        "complex": "cohere/cohere-embed-english-v3.0"
+        "simple": "voyage-3-lite",
+        "mid": "voyage-3",
+        "complex": "voyage-3-large"
+      },
+      "tierProviders": {
+        "voyage-3-lite": "openrouter",
+        "voyage-3": "openrouter",
+        "voyage-3-large": "openrouter"
       }
     },
     "caching": {
       "enabled": true,
-      "ttlMs": 604800000,
+      "ttlMs": 3600000,
       "maxSize": 1000
-    },
-    "classifier": {
-      "simpleMaxChars": 200,
-      "midMaxChars": 1000
-    },
-    "retry": {
-      "maxRetries": 3,
-      "baseDelayMs": 1000,
-      "timeoutMs": 30000
     },
     "metrics": {
       "enabled": true,
@@ -497,6 +500,17 @@ Add to `slimclaw.config.json`:
   }
 }
 ```
+
+**Config Schema:**
+
+- `enabled` (boolean, default: `false`) — Enable embedding router
+- `routing.tiers` (object) — Map complexity tiers to models
+- `routing.tierProviders` (object) — Map models/patterns to providers (`anthropic` | `openrouter`)
+- `caching.enabled` (boolean, default: `true`) — Enable SQLite cache
+- `caching.ttlMs` (number, default: `3600000`) — Cache TTL in milliseconds (1 hour)
+- `caching.maxSize` (number, default: `1000`) — Max cache entries
+- `metrics.enabled` (boolean, default: `true`) — Track metrics
+- `metrics.trackCosts` (boolean, default: `true`) — Calculate per-model costs
 
 ### Dashboard Metrics
 

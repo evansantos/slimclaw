@@ -13,7 +13,11 @@ import { classifyWithRouter } from '../classifier/clawrouter-classifier.js';
 import { classifyComplexity } from '../classifier/index.js';
 import type { ComplexityTier } from '../metrics/types.js';
 import { TIER_ORDER } from '../routing/constants.js';
-import { calculateRoutingSavings, estimateModelCost, DEFAULT_MODEL_PRICING } from '../routing/pricing.js';
+import {
+  calculateRoutingSavings,
+  estimateModelCost,
+  DEFAULT_MODEL_PRICING,
+} from '../routing/pricing.js';
 
 export interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -35,13 +39,13 @@ export interface OptimizationContext {
   sessionKey: string;
   bypassOptimization?: boolean;
   debugHeaders?: boolean;
-  mode?: "shadow" | "active";
+  mode?: 'shadow' | 'active';
   originalModel?: string;
 }
 
 /**
  * Principal função de otimização - orquestra windowing + cache
- * 
+ *
  * @param messages Array de mensagens originais
  * @param config Configuração do SlimClaw
  * @param context Contexto da requisição (IDs, flags)
@@ -52,15 +56,15 @@ export async function inferenceOptimizer(
   messages: Message[],
   config: SlimClawConfig,
   context: OptimizationContext,
-  collector?: MetricsCollector
+  collector?: MetricsCollector,
 ): Promise<OptimizedResult> {
   const startTime = Date.now();
-  
+
   // Create request-scoped logger with SlimClaw config
   const logger = createRequestLogger(
     context.requestId,
     context.agentId,
-    context.sessionKey
+    context.sessionKey,
   ).updateConfig({
     level: config.logging?.level || 'info',
     format: config.logging?.format || 'human',
@@ -68,12 +72,12 @@ export async function inferenceOptimizer(
     fileOutput: config.logging?.fileOutput !== false,
     colors: config.logging?.colors !== false,
   });
-  
+
   // Graceful fallback - se disabled ou bypass, retorna original
   if (!config.enabled || context.bypassOptimization) {
-    logger.debug('Optimization bypassed', { 
-      enabled: config.enabled, 
-      bypass: context.bypassOptimization 
+    logger.debug('Optimization bypassed', {
+      enabled: config.enabled,
+      bypass: context.bypassOptimization,
     });
     return createPassthroughResult(messages, context, logger);
   }
@@ -86,14 +90,14 @@ export async function inferenceOptimizer(
   try {
     // Calcular tokens originais
     const originalTokens = estimateTokens(messages);
-    
+
     let optimizedMessages = messages;
     let windowingApplied = false;
     let trimmedMessages = 0;
     let summaryTokens = 0;
     let cacheBreakpointsInjected = 0;
-    let summarizationMethod: "none" | "heuristic" | "llm" = "none";
-    
+    let summarizationMethod: 'none' | 'heuristic' | 'llm' = 'none';
+
     // Routing variables
     let routingApplied = false;
     let targetModel = context.originalModel || null;
@@ -150,38 +154,48 @@ export async function inferenceOptimizer(
         if (!context.originalModel) {
           logger.warn('Routing with undefined originalModel — router will handle fallback');
         }
-        classificationResult = classifyWithRouter(optimizedMessages, { originalModel: context.originalModel });
-        
+        classificationResult = classifyWithRouter(optimizedMessages, {
+          originalModel: context.originalModel,
+        });
+
         // Extract routing data from classification result
         routingTier = classificationResult.tier;
         routingConfidence = classificationResult.confidence;
-        
+
         // Determine target model based on classification
         const tierModel = config.routing.tiers[classificationResult.tier];
         if (tierModel && tierModel !== context.originalModel) {
-          
           // Check if original model is pinned (should not be routed)
-          const isPinned = context.originalModel ? config.routing.pinnedModels.includes(context.originalModel) : false;
-          
+          const isPinned = context.originalModel
+            ? config.routing.pinnedModels.includes(context.originalModel)
+            : false;
+
           // Only apply routing if confidence meets threshold and model isn't pinned
           if (classificationResult.confidence >= config.routing.minConfidence && !isPinned) {
             targetModel = tierModel;
             routingApplied = true;
-            
+
             // Determine if it's an upgrade or downgrade using shared tier order
-            const originalTier = getModelTier(context.originalModel ?? 'anthropic/claude-sonnet-4-20250514', config.routing.tiers);
+            const originalTier = getModelTier(
+              context.originalModel ?? 'anthropic/claude-sonnet-4-20250514',
+              config.routing.tiers,
+            );
             const newTier = classificationResult.tier;
-            
+
             if (isModelDowngrade(originalTier, newTier)) {
               modelDowngraded = true;
             } else if (isModelUpgrade(originalTier, newTier)) {
               modelUpgraded = true;
             }
-            
+
             // Calculate estimated savings using shared pricing functions
             // Merge user-configured pricing with defaults (user overrides win)
             const pricing = { ...DEFAULT_MODEL_PRICING, ...(config.routing.pricing ?? {}) };
-            routingSavingsPercent = calculateRoutingSavings(context.originalModel ?? 'anthropic/claude-sonnet-4-20250514', classificationResult.tier, pricing);
+            routingSavingsPercent = calculateRoutingSavings(
+              context.originalModel ?? 'anthropic/claude-sonnet-4-20250514',
+              classificationResult.tier,
+              pricing,
+            );
             routingCostEstimate = estimateModelCost(tierModel, originalTokens, 0, pricing);
 
             logger.info('Routing applied', {
@@ -214,9 +228,9 @@ export async function inferenceOptimizer(
       }
     } catch (error) {
       // Graceful degradation - if routing fails, continue with windowing/cache only
-      logger.warn('Routing failed, falling back to heuristic classification', { 
+      logger.warn('Routing failed, falling back to heuristic classification', {
         error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
+        stack: error instanceof Error ? error.stack : undefined,
       });
       classificationResult = classifyComplexity(optimizedMessages);
     }
@@ -228,13 +242,10 @@ export async function inferenceOptimizer(
         minContentLength: config.caching.minContentLength,
       });
 
-      const cacheResult = injectCacheBreakpoints(
-        optimizedMessages as any[], // Type assertion para compatibilidade
-        {
-          enabled: config.caching.injectBreakpoints,
-          minContentLength: config.caching.minContentLength,
-        }
-      );
+      const cacheResult = injectCacheBreakpoints(optimizedMessages, {
+        enabled: config.caching.injectBreakpoints,
+        minContentLength: config.caching.minContentLength,
+      });
 
       if (cacheResult.stats.breakpointsInjected > 0) {
         optimizedMessages = cacheResult.messages as Message[];
@@ -256,27 +267,27 @@ export async function inferenceOptimizer(
     // Calcular tokens finais
     const optimizedTokens = estimateTokens(optimizedMessages);
     const tokensSaved = originalTokens - optimizedTokens;
-    
+
     // Calculate windowing savings percentage
     const windowingSavings = originalTokens > 0 ? tokensSaved / originalTokens : 0;
     const routingSavings = (routingSavingsPercent ?? 0) / 100; // Convert to 0-1 fraction
-    
+
     // Calculate combined savings using the specified formula
     const combinedSavingsPercent = 1 - (1 - windowingSavings) * (1 - routingSavings);
-    
+
     // Create complete metrics object
     const metrics: OptimizerMetrics = {
       requestId: context.requestId,
       timestamp: new Date().toISOString(),
       agentId: context.agentId,
       sessionKey: context.sessionKey,
-      mode: context.mode ?? "active",
-      
+      mode: context.mode ?? 'active',
+
       // Input state
       originalModel: context.originalModel || null,
       originalMessageCount: messages.length,
       originalTokenEstimate: originalTokens,
-      
+
       // Windowing results
       windowingApplied,
       windowedMessageCount: optimizedMessages.length,
@@ -284,30 +295,35 @@ export async function inferenceOptimizer(
       trimmedMessages,
       summaryTokens,
       summarizationMethod,
-      
+
       // Classification (from classifier result)
-      classificationTier: classificationResult?.tier ?? "complex",
+      classificationTier: classificationResult?.tier ?? 'complex',
       classificationConfidence: classificationResult?.confidence ?? 0,
-      classificationScores: classificationResult?.scores ?? { simple: 0, mid: 0, complex: 1, reasoning: 0 },
+      classificationScores: classificationResult?.scores ?? {
+        simple: 0,
+        mid: 0,
+        complex: 1,
+        reasoning: 0,
+      },
       classificationSignals: classificationResult?.signals ?? [],
-      
+
       // Routing results
       routingApplied,
       targetModel,
       modelDowngraded,
       modelUpgraded,
       combinedSavingsPercent,
-      
+
       // Cache results
       cacheBreakpointsInjected,
-      
+
       // API response (to be filled by llm_output hook)
       actualInputTokens: null,
       actualOutputTokens: null,
       cacheReadTokens: null,
       cacheWriteTokens: null,
       latencyMs: Date.now() - startTime,
-      
+
       // Savings
       tokensSaved,
       // Note: Cost calculation requires pricing model integration - set in API response hooks
@@ -357,7 +373,8 @@ export async function inferenceOptimizer(
       routingApplied,
       cacheBreakpointsInjected,
       tokensSaved,
-      windowingSavingsPercent: originalTokens > 0 ? ((tokensSaved / originalTokens) * 100).toFixed(1) : '0',
+      windowingSavingsPercent:
+        originalTokens > 0 ? ((tokensSaved / originalTokens) * 100).toFixed(1) : '0',
       combinedSavingsPercent: (combinedSavingsPercent * 100).toFixed(1),
       latencyMs: Date.now() - startTime,
     });
@@ -366,7 +383,6 @@ export async function inferenceOptimizer(
       messages: optimizedMessages,
       metrics,
     };
-
   } catch (error) {
     // Graceful fallback em caso de erro
     logger.error('SlimClaw optimization failed', error instanceof Error ? error : { error });
@@ -408,62 +424,62 @@ function isModelUpgrade(originalTier: ComplexityTier | null, newTier: Complexity
  * Cria resultado de passthrough (sem otimização)
  */
 function createPassthroughResult(
-  messages: Message[], 
-  context: OptimizationContext, 
-  logger?: ReturnType<typeof createRequestLogger>
+  messages: Message[],
+  context: OptimizationContext,
+  logger?: ReturnType<typeof createRequestLogger>,
 ): OptimizedResult {
   const tokens = estimateTokens(messages);
 
   if (logger) {
-    logger.debug('Creating passthrough result', { 
-      messageCount: messages.length, 
-      tokens 
+    logger.debug('Creating passthrough result', {
+      messageCount: messages.length,
+      tokens,
     });
   }
-  
+
   const metrics: OptimizerMetrics = {
     requestId: context.requestId,
     timestamp: new Date().toISOString(),
     agentId: context.agentId,
     sessionKey: context.sessionKey,
-    mode: context.mode ?? "active",
-    
+    mode: context.mode ?? 'active',
+
     originalModel: context.originalModel ?? null,
     originalMessageCount: messages.length,
     originalTokenEstimate: tokens,
-    
+
     windowingApplied: false,
     windowedMessageCount: messages.length,
     windowedTokenEstimate: tokens,
     trimmedMessages: 0,
     summaryTokens: 0,
-    summarizationMethod: "none",
-    
-    classificationTier: "complex",
+    summarizationMethod: 'none',
+
+    classificationTier: 'complex',
     classificationConfidence: 0,
     classificationScores: { simple: 0, mid: 0, complex: 1, reasoning: 0 },
     classificationSignals: [],
-    
+
     routingApplied: false,
     targetModel: context.originalModel ?? null,
     modelDowngraded: false,
     modelUpgraded: false,
     combinedSavingsPercent: 0,
-    
+
     cacheBreakpointsInjected: 0,
-    
+
     actualInputTokens: null,
     actualOutputTokens: null,
     cacheReadTokens: null,
     cacheWriteTokens: null,
     latencyMs: null,
-    
+
     tokensSaved: 0,
     estimatedCostOriginal: null,
     estimatedCostOptimized: null,
     estimatedCostSaved: null,
   };
-  
+
   return {
     messages,
     metrics,
@@ -475,7 +491,7 @@ function createPassthroughResult(
  */
 export function generateDebugHeaders(
   result: OptimizedResult,
-  config: SlimClawConfig
+  config: SlimClawConfig,
 ): Record<string, string> {
   const headers: Record<string, string> = {
     'X-SlimClaw-Request-Id': result.metrics.requestId,
@@ -487,21 +503,25 @@ export function generateDebugHeaders(
     headers['X-SlimClaw-Original-Tokens'] = result.metrics.originalTokenEstimate.toString();
     headers['X-SlimClaw-Optimized-Tokens'] = result.metrics.windowedTokenEstimate.toString();
     headers['X-SlimClaw-Tokens-Saved'] = (result.metrics.tokensSaved ?? 0).toString();
-    
-    const savingsPercent = result.metrics.originalTokenEstimate > 0 
-      ? ((result.metrics.originalTokenEstimate - result.metrics.windowedTokenEstimate) / result.metrics.originalTokenEstimate) * 100
-      : 0;
+
+    const savingsPercent =
+      result.metrics.originalTokenEstimate > 0
+        ? ((result.metrics.originalTokenEstimate - result.metrics.windowedTokenEstimate) /
+            result.metrics.originalTokenEstimate) *
+          100
+        : 0;
     headers['X-SlimClaw-Savings-Percent'] = savingsPercent.toFixed(1);
-    
+
     headers['X-SlimClaw-Windowing'] = result.metrics.windowingApplied ? 'applied' : 'skipped';
-    headers['X-SlimClaw-Caching'] = result.metrics.cacheBreakpointsInjected > 0 ? 'applied' : 'skipped';
+    headers['X-SlimClaw-Caching'] =
+      result.metrics.cacheBreakpointsInjected > 0 ? 'applied' : 'skipped';
     headers['X-SlimClaw-Classification'] = result.metrics.classificationTier;
     headers['X-SlimClaw-Routing'] = result.metrics.routingApplied ? 'applied' : 'skipped';
-    
+
     if (result.metrics.trimmedMessages > 0) {
       headers['X-SlimClaw-Trimmed-Messages'] = result.metrics.trimmedMessages.toString();
     }
-    
+
     if (result.metrics.cacheBreakpointsInjected > 0) {
       headers['X-SlimClaw-Cache-Breakpoints'] = result.metrics.cacheBreakpointsInjected.toString();
     }
@@ -523,7 +543,7 @@ export function generateDebugHeaders(
  */
 export function shouldOptimize(
   context: OptimizationContext,
-  headers?: Record<string, string>
+  headers?: Record<string, string>,
 ): boolean {
   // Check bypass header
   if (headers?.['X-SlimClaw-Bypass'] === 'true') {
@@ -548,7 +568,7 @@ export function createOptimizationContext(
   options: {
     bypassOptimization?: boolean;
     debugHeaders?: boolean;
-  } = {}
+  } = {},
 ): OptimizationContext {
   return {
     requestId,
