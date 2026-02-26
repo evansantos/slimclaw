@@ -8,9 +8,11 @@ import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import type { MetricsCollector } from '../metrics/index.js';
+import type { MetricsCollectorAdapter } from '../types/metrics-adapter.js';
+import type { EmbeddingMetricsAdapter } from '../types/embeddings-adapter.js';
 import type { OptimizerMetrics, ComplexityTier } from '../metrics/types.js';
 import { createSlimClawLogger } from '../logging/index.js';
+import { calculateCacheHitRate as calculateEmbeddingCacheHitRate } from './cache-utils.js';
 
 // Get current file's directory for template serving
 const __filename = fileURLToPath(import.meta.url);
@@ -37,7 +39,10 @@ interface GroupedMetrics {
   complexityDistribution: Record<ComplexityTier, number>;
 }
 
-export function setupRoutes(collector: MetricsCollector): Hono {
+export function setupRoutes(
+  collector: MetricsCollectorAdapter,
+  embeddingMetrics?: EmbeddingMetricsAdapter,
+): Hono {
   const app = new Hono();
   const logger = createSlimClawLogger('info', { component: 'dashboard' });
 
@@ -326,6 +331,49 @@ export function setupRoutes(collector: MetricsCollector): Hono {
           error: 'Internal server error',
           timestamp: new Date().toISOString(),
           hasData: false,
+        },
+        500,
+      );
+    }
+  });
+
+  /**
+   * GET /api/embeddings/metrics - Embeddings metrics summary
+   */
+  app.get('/api/embeddings/metrics', (c) => {
+    try {
+      // Get metrics from tracker if available
+      const metrics = embeddingMetrics?.getMetrics() || {
+        totalRequests: 0,
+        cacheHits: 0,
+        cacheMisses: 0,
+        totalCost: 0,
+        costByModel: {},
+        requestsByTier: {
+          simple: 0,
+          mid: 0,
+          complex: 0,
+        },
+        averageDurationMs: 0,
+      };
+
+      // Calculate cache hit rate
+      const cacheHitRate = calculateEmbeddingCacheHitRate(metrics.cacheHits, metrics.totalRequests);
+
+      return c.json({
+        timestamp: new Date().toISOString(),
+        ...metrics,
+        cacheHitRate,
+      });
+    } catch (error) {
+      logger.error(
+        'Failed to fetch embeddings metrics',
+        error instanceof Error ? error : { error },
+      );
+      return c.json(
+        {
+          error: 'Internal server error',
+          timestamp: new Date().toISOString(),
         },
         500,
       );

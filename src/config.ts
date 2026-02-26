@@ -220,6 +220,39 @@ export const SlimClawConfigSchema = z.object({
     })
     .default({}),
 
+  embeddings: z
+    .object({
+      enabled: z.boolean().default(false),
+      routing: z
+        .object({
+          tiers: z.record(z.string()).default({
+            simple: 'openai/text-embedding-3-small',
+            mid: 'openai/text-embedding-3-large',
+            complex: 'cohere/cohere-embed-english-v3.0',
+          }),
+          tierProviders: z.record(z.enum(['anthropic', 'openrouter'])).default({
+            'openai/text-embedding-3-small': 'openrouter',
+            'openai/text-embedding-3-large': 'openrouter',
+            'cohere/cohere-embed-english-v3.0': 'openrouter',
+          }),
+        })
+        .default({}),
+      caching: z
+        .object({
+          enabled: z.boolean().default(true),
+          ttlMs: z.number().int().default(3600000), // 1 hour
+          maxSize: z.number().int().default(1000),
+        })
+        .default({}),
+      metrics: z
+        .object({
+          enabled: z.boolean().default(true),
+          trackCosts: z.boolean().default(true),
+        })
+        .default({}),
+    })
+    .default({}),
+
   dashboard: z
     .object({
       enabled: z.boolean().default(true),
@@ -314,6 +347,30 @@ export const DEFAULT_CONFIG: SlimClawConfig = {
     requestTimeout: 120000,
     retryOnError: false,
     fallbackModel: null,
+  },
+  embeddings: {
+    enabled: false,
+    routing: {
+      tiers: {
+        simple: 'voyage-3-lite',
+        mid: 'voyage-3',
+        complex: 'voyage-3-large',
+      },
+      tierProviders: {
+        'voyage-3-lite': 'openrouter',
+        'voyage-3': 'openrouter',
+        'voyage-3-large': 'openrouter',
+      },
+    },
+    caching: {
+      enabled: true,
+      ttlMs: 3600000, // 1 hour
+      maxSize: 1000,
+    },
+    metrics: {
+      enabled: true,
+      trackCosts: true,
+    },
   },
   dashboard: {
     enabled: false,
