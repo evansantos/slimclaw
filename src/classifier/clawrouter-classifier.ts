@@ -110,7 +110,15 @@ function mapRoutingDecisionToClassification(
   isFromFallback: boolean = false,
 ): ClassificationResult {
   const validTiers = new Set(['simple', 'mid', 'complex', 'reasoning']);
-  const normalized = decision.tier.toLowerCase();
+  // Normalize common aliases from ClawRouter (which uses uppercase and different names)
+  const tierAliases: Record<string, ComplexityTier> = {
+    low: 'simple',
+    medium: 'mid',
+    high: 'complex',
+    highest: 'reasoning',
+  };
+  const lowered = decision.tier.toLowerCase();
+  const normalized = tierAliases[lowered] ?? lowered;
 
   let tier: ComplexityTier;
   if (validTiers.has(normalized)) {
