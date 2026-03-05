@@ -11,7 +11,7 @@ import type { IRoutingProvider, RoutingDecision } from '../../routing/types.js';
 const mockHybridRouter = {
   name: 'mock-hybrid-router',
   route: vi.fn(),
-  isAvailable: vi.fn(() => true)
+  isAvailable: vi.fn(() => true),
 } satisfies IRoutingProvider;
 
 // Mock the routing modules with proper constructor functions
@@ -20,7 +20,7 @@ vi.mock('../../routing/hybrid-router.js', () => ({
     name = 'mock-hybrid-router';
     route = mockHybridRouter.route;
     isAvailable = mockHybridRouter.isAvailable;
-  }
+  },
 }));
 
 vi.mock('../../routing/clawrouter-adapter.js', () => ({
@@ -28,7 +28,7 @@ vi.mock('../../routing/clawrouter-adapter.js', () => ({
     name = 'mock-clawrouter-adapter';
     route = vi.fn();
     isAvailable = vi.fn(() => true);
-  }
+  },
 }));
 
 vi.mock('../../routing/heuristic-provider.js', () => ({
@@ -36,7 +36,7 @@ vi.mock('../../routing/heuristic-provider.js', () => ({
     name = 'mock-heuristic-provider';
     route = vi.fn();
     isAvailable = vi.fn(() => true);
-  }
+  },
 }));
 
 describe('classifyWithRouter', () => {
@@ -51,24 +51,22 @@ describe('classifyWithRouter', () => {
       tier: 'simple',
       confidence: 0.8,
       savings: 0.6,
-      costEstimate: 0.001
+      costEstimate: 0.001,
     };
-    
+
     mockHybridRouter.route.mockReturnValue(mockDecision);
 
-    const messages: Message[] = [
-      { role: 'user', content: 'Hello! How are you?' }
-    ];
-    
+    const messages: Message[] = [{ role: 'user', content: 'Hello! How are you?' }];
+
     const result = classifyWithRouter(messages);
-    
+
     // Should return ClassificationResult with expected shape
     expect(result).toHaveProperty('tier');
     expect(result).toHaveProperty('confidence');
     expect(result).toHaveProperty('reason');
     expect(result).toHaveProperty('scores');
     expect(result).toHaveProperty('signals');
-    
+
     expect(result.tier).toBe('simple');
     expect(result.confidence).toBe(0.8);
     expect(typeof result.reason).toBe('string');
@@ -82,25 +80,25 @@ describe('classifyWithRouter', () => {
       tier: 'complex',
       confidence: 0.9,
       savings: 0.2,
-      costEstimate: 0.01
+      costEstimate: 0.01,
     };
-    
+
     mockHybridRouter.route.mockReturnValue(mockDecision);
 
     const messages: Message[] = [
-      { role: 'user', content: 'I need help with a complex algorithm optimization problem.' }
+      { role: 'user', content: 'I need help with a complex algorithm optimization problem.' },
     ];
-    
+
     const result = classifyWithRouter(messages, { customConfig: 'test' });
-    
+
     // Should have called the router with correct parameters
     expect(mockHybridRouter.route).toHaveBeenCalledTimes(1);
     expect(mockHybridRouter.route).toHaveBeenCalledWith(
       'I need help with a complex algorithm optimization problem.',
       expect.any(Number), // contextTokens
-      { customConfig: 'test' }
+      { customConfig: 'test' },
     );
-    
+
     expect(result.tier).toBe('complex');
     expect(result.confidence).toBe(0.9);
   });
@@ -111,30 +109,30 @@ describe('classifyWithRouter', () => {
       tier: 'mid',
       confidence: 0.7,
       savings: 0.4,
-      costEstimate: 0.005
+      costEstimate: 0.005,
     };
-    
+
     mockHybridRouter.route.mockReturnValue(mockDecision);
 
     const messages: Message[] = [
       { role: 'user', content: 'First message' },
       { role: 'assistant', content: 'Assistant response' },
-      { 
-        role: 'user', 
+      {
+        role: 'user',
         content: [
           { type: 'text', text: 'Second user message with blocks' },
-          { type: 'text', text: 'Another text block' }
-        ] 
-      }
+          { type: 'text', text: 'Another text block' },
+        ],
+      },
     ];
-    
+
     classifyWithRouter(messages);
-    
+
     // Should extract text from all messages and blocks
     expect(mockHybridRouter.route).toHaveBeenCalledWith(
       'First message Assistant response Second user message with blocks Another text block',
       expect.any(Number),
-      undefined
+      undefined,
     );
   });
 
@@ -144,18 +142,16 @@ describe('classifyWithRouter', () => {
       tier: 'simple',
       confidence: 0.8,
       savings: 0.6,
-      costEstimate: 0.001
+      costEstimate: 0.001,
     };
-    
+
     mockHybridRouter.route.mockReturnValue(mockDecision);
 
     const longMessage = 'This is a long message. '.repeat(100); // ~2300 characters
-    const messages: Message[] = [
-      { role: 'user', content: longMessage }
-    ];
-    
+    const messages: Message[] = [{ role: 'user', content: longMessage }];
+
     classifyWithRouter(messages);
-    
+
     const [text, contextTokens] = mockHybridRouter.route.mock.calls[0];
     expect(contextTokens).toBeGreaterThan(0);
     expect(contextTokens).toBeLessThan(text.length); // rough heuristic: tokens < characters
@@ -166,19 +162,17 @@ describe('classifyWithRouter', () => {
       throw new Error('Router failed');
     });
 
-    const messages: Message[] = [
-      { role: 'user', content: 'Hello' }
-    ];
-    
+    const messages: Message[] = [{ role: 'user', content: 'Hello' }];
+
     const result = classifyWithRouter(messages);
-    
+
     // Should return fallback result when router fails
     expect(result).toHaveProperty('tier');
     expect(result).toHaveProperty('confidence');
     expect(result).toHaveProperty('reason');
     expect(result).toHaveProperty('scores');
     expect(result).toHaveProperty('signals');
-    
+
     expect(result.reason).toContain('fallback');
     expect(result.signals).toContain('router:fallback');
   });
@@ -189,13 +183,13 @@ describe('classifyWithRouter', () => {
       tier: 'simple',
       confidence: 0.5,
       savings: 1.0,
-      costEstimate: 0.0
+      costEstimate: 0.0,
     };
-    
+
     mockHybridRouter.route.mockReturnValue(mockDecision);
 
     const result = classifyWithRouter([]);
-    
+
     expect(mockHybridRouter.route).toHaveBeenCalledWith('', 0, undefined);
     expect(result.tier).toBe('simple');
   });
@@ -206,17 +200,15 @@ describe('classifyWithRouter', () => {
       tier: 'reasoning',
       confidence: 0.95,
       savings: 0.1,
-      costEstimate: 0.05
+      costEstimate: 0.05,
     };
-    
+
     mockHybridRouter.route.mockReturnValue(mockDecision);
 
-    const messages: Message[] = [
-      { role: 'user', content: 'Complex reasoning task' }
-    ];
-    
+    const messages: Message[] = [{ role: 'user', content: 'Complex reasoning task' }];
+
     const result = classifyWithRouter(messages);
-    
+
     expect(result.tier).toBe('reasoning');
     expect(result.confidence).toBe(0.95);
     expect(result.reason).toContain('claude-3-opus');
@@ -230,23 +222,17 @@ describe('classifyWithRouter', () => {
       tier: 'simple',
       confidence: 0.8,
       savings: 0.6,
-      costEstimate: 0.001
+      costEstimate: 0.001,
     };
-    
+
     mockHybridRouter.route.mockReturnValue(mockDecision);
 
-    const messages: Message[] = [
-      { role: 'user', content: 'Hello' }
-    ];
-    
+    const messages: Message[] = [{ role: 'user', content: 'Hello' }];
+
     const config = { temperature: 0.5, maxTokens: 1000 };
     classifyWithRouter(messages, config);
-    
-    expect(mockHybridRouter.route).toHaveBeenCalledWith(
-      'Hello',
-      expect.any(Number),
-      config
-    );
+
+    expect(mockHybridRouter.route).toHaveBeenCalledWith('Hello', expect.any(Number), config);
   });
 
   test('should normalize uppercase tier values to lowercase', () => {
@@ -255,7 +241,7 @@ describe('classifyWithRouter', () => {
       tier: 'SIMPLE',
       confidence: 0.9,
       savings: 50,
-      costEstimate: 0.01
+      costEstimate: 0.01,
     });
 
     const messages: Message[] = [{ role: 'user', content: 'hi' }];
@@ -265,13 +251,37 @@ describe('classifyWithRouter', () => {
     expect(result.scores.simple).toBeGreaterThan(result.scores.complex);
   });
 
+  test('should map ClawRouter alias tiers (MEDIUM, HIGH, LOW) to SlimClaw tiers', () => {
+    const aliasMap: Array<[string, string]> = [
+      ['MEDIUM', 'mid'],
+      ['medium', 'mid'],
+      ['LOW', 'simple'],
+      ['HIGH', 'complex'],
+      ['HIGHEST', 'reasoning'],
+    ];
+
+    const messages: Message[] = [{ role: 'user', content: 'test' }];
+
+    for (const [input, expected] of aliasMap) {
+      mockHybridRouter.route.mockReturnValue({
+        model: 'claude-sonnet',
+        tier: input,
+        confidence: 0.8,
+        savings: 30,
+        costEstimate: 0.02,
+      });
+      const result = classifyWithRouter(messages);
+      expect(result.tier).toBe(expected);
+    }
+  });
+
   test('should fallback to mid tier for unknown tier values', () => {
     mockHybridRouter.route.mockReturnValue({
       model: 'claude-sonnet',
       tier: 'UNKNOWN_TIER',
       confidence: 0.7,
       savings: 30,
-      costEstimate: 0.02
+      costEstimate: 0.02,
     });
 
     const messages: Message[] = [{ role: 'user', content: 'test' }];
