@@ -159,6 +159,35 @@ describe('Optimizer with ClawRouter Integration', () => {
       expect(result.metrics.routingSavingsPercent).toBe(91.67); // From realistic pricing calculation
     });
 
+    it('should provide a fallback model when originalModel is undefined', async () => {
+      const mockClassificationResult: ClassificationResult = {
+        tier: 'mid',
+        confidence: 0.8,
+        reason: 'Mid-tier classification from router',
+        scores: { simple: 0.1, mid: 0.8, complex: 0.08, reasoning: 0.02 },
+        signals: ['router:primary', 'tier:mid'],
+      };
+
+      mockClassifyWithRouter.mockReturnValue(mockClassificationResult);
+
+      await inferenceOptimizer(
+        testMessages,
+        routingEnabledConfig,
+        {
+          requestId: 'test-request-id',
+          agentId: 'test-agent',
+          sessionKey: 'test-session',
+        }
+      );
+
+      expect(mockClassifyWithRouter).toHaveBeenCalledWith(testMessages, {
+        originalModel: 'anthropic/claude-sonnet-4-20250514',
+      });
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Routing with undefined originalModel — using default fallback'
+      );
+    });
+
     it('should calculate combined savings correctly', async () => {
       const mockClassificationResult: ClassificationResult = {
         tier: 'simple',

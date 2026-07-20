@@ -152,10 +152,10 @@ export async function inferenceOptimizer(
       if (config.routing.enabled) {
         logger.debug('Starting routing step');
         if (!context.originalModel) {
-          logger.warn('Routing with undefined originalModel — router will handle fallback');
+          logger.warn('Routing with undefined originalModel — using default fallback');
         }
         classificationResult = classifyWithRouter(optimizedMessages, {
-          originalModel: context.originalModel,
+          originalModel: context.originalModel ?? 'anthropic/claude-sonnet-4-20250514',
         });
 
         // Extract routing data from classification result
